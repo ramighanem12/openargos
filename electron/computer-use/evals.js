@@ -17,16 +17,16 @@ function createComputerUseEvalSuite({
   }
 
   add("planner routes direct image download to computer_use", () => {
-    const plan = planner.fallbackTurnPlan("Download a photo of Grace Hopper and name the file grace-hopper.", [], null);
+    const plan = planner.fallbackTurnPlan("Download a photo of Example Public Figure and name the file example-public-figure.", [], null);
     if (plan.route !== "computer_use") throw new Error(`Expected computer_use, got ${plan.route}`);
-    if (!/grace hopper/i.test(plan.task)) throw new Error(`Expected task to preserve subject, got ${plan.task}`);
+    if (!/example public figure/i.test(plan.task)) throw new Error(`Expected task to preserve subject, got ${plan.task}`);
   });
 
   add("planner keeps product complaints in chat", () => {
     const plan = planner.fallbackTurnPlan("Why did computer use click the wrong thing?", [], {
       taskId: "cua_1",
-      task: "Download a photo of Barack Obama",
-      goal: "Download a photo of Barack Obama"
+      task: "Download a photo of Example Public Figure",
+      goal: "Download a photo of Example Public Figure"
     });
     if (plan.route !== "chat") throw new Error(`Expected chat, got ${plan.route}`);
   });
@@ -109,7 +109,7 @@ function createComputerUseEvalSuite({
   });
 
   add("surface router sends public image tasks to background browser", () => {
-    const plan = surfaceRouter.resolveAdapterPlan("Download a photo of Sam Altman.");
+    const plan = surfaceRouter.resolveAdapterPlan("Download a photo of Example Public Figure.");
     if (plan.kind !== "browser" || !plan.background) throw new Error(`Expected background browser, got ${plan.kind}`);
   });
 
@@ -123,7 +123,7 @@ function createComputerUseEvalSuite({
     const decision = executor.shouldRetryNoOp({
       finalText: "I can't take control from normal chat. Turn on Computer Use.",
       meaningfulActionTotal: 0,
-      task: "Download a photo of Sam Altman"
+      task: "Download a photo of Example Public Figure"
     });
     if (!decision.retry || !decision.stoppedWithoutAction) throw new Error("Expected no-op retry decision.");
   });
@@ -187,7 +187,7 @@ function createComputerUseEvalSuite({
   add("background public task blocks sign-in clicks", () => {
     if (typeof blockedBackgroundBrowserActionReason !== "function") return;
     const reason = blockedBackgroundBrowserActionReason({
-      task: "Download a photo of Barack Obama",
+      task: "Download a photo of Example Public Figure",
       action: { type: "click" },
       target: { label: "Sign in", role: "button", href: "https://accounts.google.com/" }
     });
