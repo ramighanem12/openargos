@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenArgos Ambient</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="ambient-card">
+      <div class="ambient-command-mist" aria-hidden="true"></div>
+      <div class="ambient-header">
+        <div class="ambient-mark"></div>
+        <div>
+          <div class="ambient-title">OpenArgos</div>
+          <div class="ambient-subtitle shimmer" data-status>Thinking</div>
+        </div>
+      </div>
+      <div class="ambient-body">
+        <div class="ambient-log" data-log></div>
+      </div>
+      <div class="ambient-actions" data-actions hidden>
+        <button class="ambient-button ambient-button-quiet" data-ignore>Ignore</button>
+        <button class="ambient-button ambient-button-quiet" data-always-allow hidden>Always allow</button>
+        <button class="ambient-button" data-open-draft>Open draft</button>
+      </div>
+      <form class="ambient-followup" data-followup hidden>
+        <span class="tooltip-wrap">
+          <button class="voice-button" type="button" data-voice aria-label="Use voice" aria-describedby="voice-tooltip">
+            <svg class="voice-icon" viewBox="0 0 16 16" aria-hidden="true">
+              <rect x="5.25" y="2.25" width="5.5" height="7.5" rx="2.75" />
+              <path d="M3.75 7.25v.85a4.25 4.25 0 0 0 8.5 0v-.85" />
+              <path d="M8 12.35v1.4" />
+              <path d="M6.1 13.75h3.8" />
+            </svg>
+            <span class="voice-stop-icon" aria-hidden="true"></span>
+            <span class="voice-spinner" aria-hidden="true"></span>
+          </button>
+        </span>
+        <div class="followup-input-wrap">
+          <div class="followup-highlight-layer" data-followup-highlight aria-hidden="true"></div>
+          <textarea data-followup-input rows="1" placeholder="Ask anything" autocomplete="off"></textarea>
+        </div>
+        <div class="mention-menu" data-mention-menu hidden></div>
+        <button class="send-button" type="submit" aria-label="Send">
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M5.5 10h9" />
+            <path d="m10.8 6.3 3.7 3.7-3.7 3.7" />
+          </svg>
+        </button>
+      </form>
+      <div class="ambient-window-actions" data-close-zone>
+        <button class="ambient-window-button ambient-close" data-close aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M18 6 6 18"></path>
+            <path d="m6 6 12 12"></path>
+          </svg>
+        </button>
+      </div>
+    </main>
+    <div class="ambient-tooltip floating-tooltip" id="voice-tooltip" role="tooltip" data-voice-tooltip>
+      <span>Real-time voice</span>
+      <span>Hold shortcut to record audio</span>
+    </div>
+    <div class="ambient-tooltip floating-tooltip" id="computer-stop-tooltip" role="tooltip" data-computer-stop-tooltip>
+      <span>Stop Computer Use</span>
+      <span>Cancel the active run.</span>
+      <kbd>⌘.</kbd>
+    </div>
+    <script src="./ambient.js"></script>
+  </body>
+</html>

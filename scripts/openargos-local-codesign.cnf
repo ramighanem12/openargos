@@ -1,0 +1,16 @@
+[ req ]
+default_bits = 2048
+default_md = sha256
+distinguished_name = dn
+x509_extensions = v3_codesign
+prompt = no
+
+[ dn ]
+CN = OpenArgos Local Development
+O = OpenArgos Local Development
+
+[ v3_codesign ]
+basicConstraints = critical, CA:TRUE
+keyUsage = critical, digitalSignature, keyCertSign
+extendedKeyUsage = critical, codeSigning
+subjectKeyIdentifier = hash

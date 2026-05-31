@@ -1,0 +1,2477 @@
+:root {
+  color-scheme: dark;
+  --ambient-card-bg: rgba(12, 12, 11, 0.985);
+  --ambient-command-bg: rgba(13, 13, 12, 0.975);
+  --ambient-card-border: rgba(255, 255, 255, 0.11);
+  --ambient-text: rgba(255, 255, 255, 0.92);
+  --ambient-message: rgba(255, 255, 255, 0.86);
+  --ambient-muted: rgba(255, 255, 255, 0.50);
+  --ambient-soft: rgba(255, 255, 255, 0.075);
+  --ambient-soft-hover: rgba(255, 255, 255, 0.11);
+  --ambient-menu-row-hover: rgba(255, 255, 255, 0.06);
+  --ambient-subtle: rgba(255, 255, 255, 0.38);
+  --ambient-tooltip-bg: rgba(39, 39, 38, 0.94);
+  --ambient-shadow: rgba(0, 0, 0, 0.34);
+  --ambient-shimmer-base: rgba(255, 255, 255, 0.34);
+  --ambient-shimmer-peak: rgba(255, 255, 255, 0.78);
+  --ambient-glow: rgba(255, 255, 255, 0.055);
+  --ambient-person-mention: #d6c2ff;
+  --ambient-person-mention-bg: rgba(148, 112, 255, 0.18);
+  --ambient-person-icon-bg: #8b5cf6;
+  --ambient-skill-mention: #f4c84f;
+  --ambient-skill-mention-bg: rgba(244, 200, 79, 0.18);
+  --ambient-skill-mention-bg-strong: rgba(244, 200, 79, 0.25);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --ambient-card-bg: #ffffff;
+  --ambient-command-bg: #ffffff;
+  --ambient-card-border: rgba(0, 0, 0, 0.13);
+  --ambient-text: #1a1c1f;
+  --ambient-message: #37393b;
+  --ambient-muted: #6a6b6d;
+  --ambient-soft: #f4f4f4;
+  --ambient-soft-hover: #e8e8e9;
+  --ambient-menu-row-hover: #f2f2f2;
+  --ambient-subtle: #8e8f90;
+  --ambient-tooltip-bg: #ffffff;
+  --ambient-shadow: rgba(0, 0, 0, 0.16);
+  --ambient-shimmer-base: rgba(106, 107, 109, 0.62);
+  --ambient-shimmer-peak: rgba(26, 28, 31, 0.88);
+  --ambient-glow: rgba(255, 255, 255, 0.055);
+  --ambient-person-mention: #6d3ed4;
+  --ambient-person-mention-bg: rgba(126, 87, 230, 0.16);
+  --ambient-person-icon-bg: #7c3aed;
+  --ambient-skill-mention: #8a6400;
+  --ambient-skill-mention-bg: rgba(183, 132, 0, 0.18);
+  --ambient-skill-mention-bg-strong: rgba(183, 132, 0, 0.26);
+}
+
+@property --command-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 10px 10px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  overflow: hidden;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  font-size: 14px;
+  color: var(--ambient-text);
+  -webkit-app-region: no-drag;
+  --ambient-origin-x: 100%;
+  --ambient-origin-y: 0;
+  --ambient-enter-y: -7px;
+}
+
+body.is-compact-mode {
+  padding: 6px 6px 14px;
+}
+
+.ambient-card {
+  position: relative;
+  --bottom-fade-offset: 16px;
+  --ambient-card-bottom-padding: 16px;
+  width: 100%;
+  height: auto;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--ambient-card-border);
+  border-radius: 18px;
+  background-color: var(--ambient-card-bg);
+  backdrop-filter: blur(46px) saturate(1.08);
+  -webkit-backdrop-filter: blur(46px) saturate(1.08);
+  padding: 14px 14px var(--ambient-card-bottom-padding);
+  overflow: hidden;
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.18),
+    0 1px 3px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  transform-origin: var(--ambient-origin-x) var(--ambient-origin-y);
+  animation: card-in 320ms cubic-bezier(0.16, 0.86, 0.18, 1) both;
+  transition:
+    width 240ms cubic-bezier(0.2, 0.86, 0.2, 1),
+    height 260ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    min-height 260ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    margin 240ms cubic-bezier(0.2, 0.86, 0.2, 1),
+    padding 260ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    border-radius 260ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    opacity 140ms ease,
+    transform 180ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    background-color 360ms cubic-bezier(0.2, 0.76, 0.2, 1),
+    border-color 180ms ease,
+    box-shadow 220ms ease;
+  isolation: isolate;
+  -webkit-app-region: no-drag;
+}
+
+:root[data-theme="light"] .ambient-card {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.08),
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.70);
+}
+
+.ambient-card.is-command-center:not(.has-messages) {
+  --command-angle: 0deg;
+  --ambient-card-bottom-padding: 13px;
+  border-color: rgba(255, 255, 255, 0.16);
+  background-color: var(--ambient-command-bg);
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.20),
+    0 1px 3px rgba(0, 0, 0, 0.14),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+:root[data-theme="light"] .ambient-card.is-command-center:not(.has-messages) {
+  border-color: rgba(0, 0, 0, 0.14);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.08),
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.74);
+}
+
+:root[data-theme="light"] .ambient-command-mist::before {
+  background:
+    radial-gradient(ellipse at 28% 18%, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.12) 22%, transparent 46%),
+    radial-gradient(ellipse at 74% 58%, rgba(255, 255, 255, 0.22), transparent 42%);
+  opacity: 0.48;
+}
+
+:root[data-theme="light"] .ambient-command-mist::after {
+  background: conic-gradient(
+    from var(--command-angle),
+    rgba(0, 0, 0, 0) 0deg,
+    rgba(0, 0, 0, 0) 214deg,
+    rgba(0, 0, 0, 0.06) 250deg,
+    rgba(0, 0, 0, 0.16) 286deg,
+    rgba(0, 0, 0, 0.09) 304deg,
+    rgba(0, 0, 0, 0) 340deg,
+    rgba(0, 0, 0, 0) 360deg
+  );
+  opacity: 0.30;
+}
+
+.ambient-command-mist {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 560ms cubic-bezier(0.2, 0.76, 0.2, 1);
+}
+
+.ambient-command-mist::before {
+  content: "";
+  position: absolute;
+  inset: -36%;
+  background:
+    radial-gradient(ellipse at 28% 18%, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.010) 20%, transparent 45%),
+    radial-gradient(ellipse at 74% 58%, rgba(255, 255, 255, 0.018), transparent 42%);
+  background-size: 148% 142%, 136% 132%;
+  filter: blur(28px);
+  opacity: 0.34;
+  animation: command-mist-flow 10s cubic-bezier(0.45, 0, 0.16, 1) infinite;
+  will-change: transform, background-position;
+}
+
+.ambient-command-mist::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--command-angle),
+    rgba(255, 255, 255, 0) 0deg,
+    rgba(255, 255, 255, 0) 214deg,
+    rgba(255, 255, 255, 0.12) 250deg,
+    rgba(255, 255, 255, 0.30) 286deg,
+    rgba(255, 255, 255, 0.18) 304deg,
+    rgba(255, 255, 255, 0) 340deg,
+    rgba(255, 255, 255, 0) 360deg
+  );
+  opacity: 0.44;
+  animation: command-border-orbit 7.2s linear infinite;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+.ambient-card.is-command-center:not(.has-messages) .ambient-command-mist {
+  opacity: 1;
+}
+
+.ambient-card::before,
+.ambient-card::after {
+  content: "";
+  position: absolute;
+  z-index: 4;
+  left: 14px;
+  right: 14px;
+  height: 22px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+
+.ambient-card::before {
+  bottom: var(--bottom-fade-offset);
+  background: linear-gradient(to top, var(--ambient-card-bg), transparent);
+}
+
+.ambient-card::after {
+  top: 56px;
+  background: linear-gradient(to bottom, var(--ambient-card-bg), transparent);
+}
+
+.ambient-card.is-height-capped.body-scrolled::after {
+  opacity: 1;
+}
+
+.ambient-card.is-height-capped.body-scrollable:not(.body-at-bottom)::before {
+  opacity: 1;
+}
+
+.ambient-card.is-streaming-response::before {
+  opacity: 0 !important;
+}
+
+.ambient-card.is-dismissing,
+.ambient-card.is-command-center.is-dismissing:not(.has-messages) {
+  pointer-events: none;
+  overflow: hidden;
+  transform-origin: 100% 0;
+  animation: ambient-dismiss 260ms cubic-bezier(0.22, 0.72, 0.18, 1) both;
+}
+
+.ambient-card.is-collapsing {
+  opacity: 0;
+  transform: translateY(-9px) scale(0.84);
+  border-color: transparent;
+  background: transparent;
+}
+
+.ambient-card.bottom-controls-sizing {
+  transition:
+    height 240ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    min-height 240ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    opacity 180ms ease,
+    transform 260ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.ambient-card.is-dismissing .ambient-header,
+.ambient-card.is-dismissing .ambient-body,
+.ambient-card.is-dismissing .ambient-actions,
+.ambient-card.is-dismissing .ambient-followup,
+.ambient-card.is-dismissing .ambient-close {
+  transition: none;
+}
+
+.ambient-fragment {
+  position: absolute;
+  z-index: 5;
+  left: var(--x);
+  top: var(--y);
+  width: var(--w);
+  height: var(--h);
+  border: 1px solid var(--ambient-card-border);
+  border-radius: 6px;
+  background:
+    linear-gradient(145deg, var(--ambient-soft-hover), rgba(255, 255, 255, 0.02)),
+    var(--ambient-card-bg);
+  box-shadow: 0 10px 24px var(--ambient-shadow);
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.72);
+  animation: fragment-away 520ms cubic-bezier(0.18, 0.9, 0.18, 1) forwards;
+  animation-delay: var(--delay);
+}
+
+.ambient-window-actions {
+  position: absolute;
+  z-index: 100;
+  top: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: transparent;
+  pointer-events: auto;
+  -webkit-app-region: drag;
+}
+
+body.is-compact-mode .ambient-window-actions {
+  top: 6px;
+  right: 6px;
+}
+
+.ambient-window-actions * {
+  -webkit-app-region: no-drag;
+}
+
+.ambient-window-button {
+  width: 23px;
+  height: 23px;
+  border: 0;
+  border-radius: 7px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--ambient-muted) 84%, transparent);
+  background: transparent;
+  opacity: 0;
+  transform: scale(0.98);
+  pointer-events: auto;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: default;
+  transition:
+    opacity 130ms ease,
+    transform 130ms ease,
+    background-color 120ms ease,
+    color 120ms ease;
+  -webkit-app-region: no-drag;
+}
+
+.ambient-card.is-dismissing .ambient-window-actions,
+.ambient-card.is-content-hidden .ambient-window-actions,
+.ambient-card.is-compact .ambient-window-actions {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ambient-close svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.ambient-window-actions:hover .ambient-close {
+  color: color-mix(in srgb, var(--ambient-muted) 84%, transparent);
+  opacity: 1;
+  transform: scale(1);
+}
+
+.ambient-window-button:hover {
+  color: var(--ambient-text);
+  background: var(--ambient-soft-hover);
+  opacity: 1;
+  transform: scale(1);
+}
+
+.ambient-window-actions .ambient-close:hover,
+.ambient-window-actions .ambient-close:focus-visible {
+  color: var(--ambient-text);
+  outline: none;
+}
+
+.ambient-window-button:active {
+  transform: scale(0.96);
+}
+
+.ambient-card.is-content-hidden {
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.ambient-card.is-mode-fading-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ambient-card.is-mode-transitioning {
+  transition:
+    opacity 120ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 180ms ease;
+}
+
+.ambient-card.is-mode-transitioning .ambient-header,
+.ambient-card.is-mode-transitioning .ambient-mark {
+  transition: none !important;
+  animation: none !important;
+}
+
+.ambient-card.is-mode-fading-in {
+  opacity: 1;
+}
+
+.ambient-card.is-content-hidden .ambient-window-actions,
+.ambient-card.is-content-hidden .ambient-body,
+.ambient-card.is-content-hidden .ambient-actions,
+.ambient-card.is-content-hidden .ambient-followup {
+  opacity: 0;
+  filter: blur(2px);
+  transform: translateY(-2px) scale(0.995);
+  pointer-events: none;
+  transition: opacity 120ms ease, filter 140ms ease, transform 150ms cubic-bezier(0.2, 0.86, 0.2, 1);
+}
+
+.ambient-card.is-content-hidden .ambient-header > div:not(.ambient-mark) {
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: translateX(-4px);
+  transition: max-width 150ms ease, opacity 110ms ease, transform 140ms ease;
+}
+
+.ambient-card.is-compact {
+  width: calc(100% - 4px);
+  height: 52px !important;
+  min-height: 52px !important;
+  margin: 5px 2px 0 auto;
+  padding: 9px 13px;
+  border-radius: 24px;
+  align-items: center;
+  justify-content: center;
+}
+
+.ambient-card.is-compact {
+  cursor: pointer;
+  box-shadow:
+    0 5px 14px rgba(0, 0, 0, 0.18),
+    0 1px 5px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  transition:
+    opacity 140ms ease,
+    background-color 170ms ease,
+    border-color 170ms ease,
+    box-shadow 190ms ease,
+    filter 160ms ease,
+    transform 180ms cubic-bezier(0.2, 0.86, 0.2, 1);
+  -webkit-app-region: no-drag;
+}
+
+.ambient-card.is-mode-transitioning.is-compact {
+  transition:
+    opacity 150ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 180ms ease;
+}
+
+.ambient-card.is-compact::before,
+.ambient-card.is-compact::after {
+  opacity: 0 !important;
+}
+
+.ambient-card.is-compact:hover {
+  border-color: color-mix(in srgb, var(--ambient-card-border) 56%, rgba(255, 255, 255, 0.58));
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in srgb, var(--ambient-glow) 52%, transparent), transparent 62%),
+    var(--ambient-card-bg);
+  box-shadow:
+    0 6px 16px rgba(0, 0, 0, 0.20),
+    0 1px 5px rgba(0, 0, 0, 0.14),
+    inset 0 0 0 1px color-mix(in srgb, var(--ambient-glow) 34%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  filter: brightness(1.04);
+}
+
+.ambient-card.is-compact .ambient-window-actions,
+.ambient-card.is-compact .ambient-body,
+.ambient-card.is-compact .ambient-actions,
+.ambient-card.is-compact .ambient-followup {
+  display: none !important;
+}
+
+.ambient-card.is-compact .ambient-header {
+  width: 100%;
+  justify-content: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.ambient-card.is-compact .ambient-mark {
+  width: 24px;
+  height: 24px;
+  transition: filter 180ms ease;
+}
+
+.ambient-card.is-compact:hover .ambient-mark {
+  filter: drop-shadow(0 0 12px var(--ambient-glow));
+}
+
+.ambient-card.is-compact .ambient-header > div:not(.ambient-mark) {
+  display: block;
+  max-width: 110px;
+  opacity: 1;
+  transform: none;
+}
+
+.ambient-card.is-compact .ambient-title {
+  font-size: 13px;
+  line-height: 16px;
+}
+
+.ambient-card.is-compact .ambient-subtitle {
+  margin-top: 0;
+  font-size: 12px;
+  line-height: 15px;
+}
+
+.ambient-card.is-command-center:not(.has-messages) .ambient-subtitle:not(.shimmer):not(.done) {
+  color: color-mix(in srgb, var(--ambient-text) 72%, transparent);
+}
+
+.ambient-card.is-command-center:not(.has-messages) .ambient-subtitle.command-prompt-reveal {
+  animation: none;
+}
+
+.ambient-card.is-command-center:not(.has-messages) .command-prompt-word {
+  display: inline-block;
+  opacity: 0;
+  transform: translateX(-3px);
+  filter: blur(2px);
+  animation: command-prompt-word-in 240ms cubic-bezier(0.2, 0.86, 0.2, 1) forwards;
+}
+
+.ambient-card.is-expanding .ambient-header > div:not(.ambient-mark),
+.ambient-card.is-expanding .ambient-window-actions,
+.ambient-card.is-expanding .ambient-body,
+.ambient-card.is-expanding .ambient-actions:not([hidden]),
+.ambient-card.is-expanding .ambient-followup:not([hidden]) {
+  animation: ambient-expand-content 240ms cubic-bezier(0.2, 0.86, 0.2, 1) both;
+}
+
+.ambient-card.is-expanding .ambient-body {
+  animation-delay: 18ms;
+}
+
+.ambient-card.is-expanding .ambient-actions:not([hidden]),
+.ambient-card.is-expanding .ambient-followup:not([hidden]) {
+  animation-delay: 34ms;
+}
+
+.ambient-header {
+  position: relative;
+  z-index: 5;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-app-region: drag;
+}
+
+.ambient-body,
+.ambient-actions,
+.ambient-followup {
+  z-index: 2;
+}
+
+.ambient-header > div:not(.ambient-mark) {
+  max-width: 230px;
+  transition: max-width 170ms ease, opacity 140ms ease, transform 160ms ease;
+  -webkit-app-region: drag;
+}
+
+.ambient-mark {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: url("../renderer/assets/openargos-ambient-icon.png") center / contain no-repeat;
+  flex: 0 0 auto;
+  -webkit-app-region: drag;
+}
+
+:root[data-theme="light"] .ambient-mark {
+  background-image: url("../renderer/assets/openargos-ambient-icon-light.png");
+}
+
+.ambient-title {
+  font-size: 13px;
+  color: var(--ambient-text);
+  -webkit-app-region: drag;
+}
+
+.ambient-subtitle {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--ambient-muted);
+  -webkit-app-region: drag;
+}
+
+.ambient-subtitle.shimmer {
+  background: linear-gradient(100deg, var(--ambient-shimmer-base) 0%, var(--ambient-shimmer-base) 36%, var(--ambient-shimmer-peak) 50%, var(--ambient-shimmer-base) 64%, var(--ambient-shimmer-base) 100%);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2200ms linear infinite;
+}
+
+.ambient-subtitle.done {
+  color: var(--ambient-muted);
+}
+
+.ambient-status-spinner {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-left: 6px;
+  border-radius: 999px;
+  border: 1.25px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-top-color: currentColor;
+  vertical-align: -1px;
+  animation: spinner-spin 680ms linear infinite;
+}
+
+.ambient-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 12px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overflow-anchor: none;
+  padding-right: 2px;
+  -webkit-app-region: no-drag;
+  scrollbar-width: none;
+}
+
+.ambient-card.is-command-center:not(.has-messages) .ambient-body {
+  display: none;
+  margin-top: 0;
+}
+
+.ambient-card.is-command-center:not(.has-messages) .ambient-followup {
+  margin-top: 14px;
+  background: transparent;
+}
+
+.ambient-card.is-height-capped .ambient-body,
+.ambient-card.is-computer-approval .ambient-body {
+  flex-basis: 0;
+}
+
+.ambient-card.bottom-controls-body-locked .ambient-body {
+  flex: 0 0 var(--ambient-bottom-reveal-body-height);
+  height: var(--ambient-bottom-reveal-body-height);
+}
+
+.ambient-body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+.ambient-log {
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 3px;
+  padding-bottom: 1px;
+  overflow: visible;
+}
+
+.ambient-message,
+.ambient-message p,
+.ambient-message ul,
+.ambient-message ol {
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--ambient-message);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ambient-message.previous {
+  color: var(--ambient-muted);
+  transition: color 140ms ease;
+}
+
+.ambient-message.previous.collapsible {
+  -webkit-app-region: no-drag;
+}
+
+.ambient-message.previous.collapsible.expanded {
+  color: var(--ambient-message);
+}
+
+.ambient-message.is-history-collapsing {
+  transition:
+    height 250ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    color 180ms ease,
+    font-size 220ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    line-height 220ms cubic-bezier(0.2, 0.9, 0.2, 1);
+  will-change: height;
+}
+
+.ambient-message.is-history-collapsing p,
+.ambient-message.is-history-collapsing ul,
+.ambient-message.is-history-collapsing ol {
+  transition:
+    font-size 220ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    line-height 220ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    color 180ms ease;
+}
+
+.message-content {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  transition: max-height 230ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.ambient-embedded-card.is-revealing {
+  animation: ambient-embedded-card-in 220ms cubic-bezier(0.2, 0.86, 0.2, 1) both;
+  transform-origin: top center;
+  will-change: opacity, transform, filter;
+}
+
+
+.ambient-message.streaming .message-content {
+  white-space: normal;
+}
+
+.ambient-message.previous.collapsible .message-content {
+  max-height: none;
+  overflow: visible;
+}
+
+.ambient-message.previous.collapsible:not(.expanded) .message-content {
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.ambient-message.previous.collapsible.expanded .message-content {
+  max-height: none;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.ambient-message.previous.collapsible .ambient-embedded-card {
+  transition: opacity 160ms ease, filter 160ms ease;
+}
+
+.ambient-message.previous.collapsible:not(.expanded) .ambient-embedded-card {
+  opacity: 1;
+  filter: none;
+  pointer-events: auto;
+}
+
+.message-toggle {
+  height: 18px;
+  margin: 2px 0 0;
+  padding: 0;
+  border: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--ambient-muted);
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.35;
+  cursor: default;
+  -webkit-app-region: no-drag;
+  transition: color 130ms ease;
+}
+
+.message-toggle:hover {
+  color: var(--ambient-text);
+}
+
+.message-feedback {
+  height: 24px;
+  margin: 7px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  -webkit-app-region: no-drag;
+}
+
+.message-feedback.is-revealing {
+  animation: feedback-controls-in 150ms ease both;
+}
+
+.message-feedback-button {
+  width: 23px;
+  height: 23px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--ambient-muted) 84%, transparent);
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: default;
+  transition: color 130ms ease, background 130ms ease;
+}
+
+.message-feedback-button:hover {
+  color: var(--ambient-text);
+  background: var(--ambient-soft-hover);
+}
+
+.message-feedback[data-selected="up"] .message-feedback-button[data-feedback-value="down"],
+.message-feedback[data-selected="down"] .message-feedback-button[data-feedback-value="up"] {
+  display: none;
+}
+
+.message-feedback-button.is-selected {
+  color: var(--ambient-text);
+  background: var(--ambient-soft-hover);
+}
+
+.message-feedback-button.is-copied {
+  color: var(--ambient-text);
+  background: var(--ambient-soft-hover);
+}
+
+.message-feedback-button.is-selected svg {
+  fill: color-mix(in srgb, currentColor 22%, transparent);
+}
+
+.message-feedback-button svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ambient-message.previous.collapsible:not(.expanded) .message-feedback:not([data-selected]) {
+  display: flex;
+}
+
+.toggle-chevron {
+  width: 5px;
+  height: 5px;
+  border-right: 1.4px solid currentColor;
+  border-bottom: 1.4px solid currentColor;
+  opacity: 0;
+  transform: translateY(-1px) rotate(45deg);
+  transition: opacity 130ms ease, transform 130ms ease;
+}
+
+.message-toggle:hover .toggle-chevron {
+  opacity: 1;
+}
+
+.ambient-message.expanded .toggle-chevron {
+  transform: translateY(1px) rotate(225deg);
+}
+
+.ambient-message p + p,
+.ambient-message p + ul,
+.ambient-message p + ol,
+.ambient-message p + .ambient-markdown-table-scroll,
+.ambient-message ul + p,
+.ambient-message ul + ol,
+.ambient-message ul + .ambient-markdown-table-scroll,
+.ambient-message ol + p,
+.ambient-message ol + ul,
+.ambient-message ol + .ambient-markdown-table-scroll,
+.ambient-message .ambient-markdown-table-scroll + p,
+.ambient-message .ambient-markdown-table-scroll + ul,
+.ambient-message .ambient-markdown-table-scroll + ol,
+.ambient-message .ambient-markdown-table-scroll + .ambient-markdown-table-scroll {
+  margin-top: 9px;
+}
+
+.ambient-message ul,
+.ambient-message ol {
+  padding-left: 17px;
+}
+
+.ambient-message li {
+  min-width: 0;
+  max-width: 100%;
+  padding-left: 1px;
+  margin: 3px 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ambient-message li::marker {
+  color: currentColor;
+  font-size: 0.78em;
+}
+
+.ambient-message strong {
+  font-weight: 650;
+  color: var(--ambient-text);
+}
+
+.ambient-message em {
+  font-style: italic;
+}
+
+.ambient-message code {
+  padding: 1px 4px;
+  border-radius: 5px;
+  font-family: ui-monospace, SFMono-Regular, SFMono, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  color: var(--ambient-text);
+  background: var(--ambient-soft);
+}
+
+.ambient-citation {
+  margin-left: 1px;
+  font-size: 0.68em;
+  font-weight: 650;
+  line-height: 0;
+  vertical-align: super;
+  color: color-mix(in srgb, currentColor 72%, transparent);
+}
+
+.ambient-markdown-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  -webkit-app-region: no-drag;
+  border: 1px solid color-mix(in srgb, var(--ambient-card-border) 86%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--ambient-soft) 58%, transparent);
+}
+
+.ambient-markdown-table-scroll::-webkit-scrollbar {
+  height: 0;
+}
+
+.ambient-markdown-table {
+  width: 100%;
+  min-width: max-content;
+  border-collapse: collapse;
+  color: inherit;
+  font: inherit;
+  line-height: 1.35;
+}
+
+.ambient-markdown-table th,
+.ambient-markdown-table td {
+  min-width: 58px;
+  max-width: 220px;
+  padding: 7px 9px;
+  border-right: 1px solid color-mix(in srgb, var(--ambient-card-border) 78%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ambient-card-border) 78%, transparent);
+  vertical-align: top;
+  white-space: normal;
+}
+
+.ambient-markdown-table th:last-child,
+.ambient-markdown-table td:last-child {
+  border-right: 0;
+}
+
+.ambient-markdown-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.ambient-markdown-table th {
+  font-weight: 650;
+  color: var(--ambient-text);
+  background: color-mix(in srgb, var(--ambient-soft-hover) 72%, transparent);
+}
+
+.ambient-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  max-width: 100%;
+  min-width: 0;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 44%, transparent);
+  text-underline-offset: 2px;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  vertical-align: baseline;
+  transition: color 130ms ease, text-decoration-color 130ms ease;
+}
+
+.ambient-link-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.ambient-link.is-url-label .ambient-link-label {
+  display: inline-block;
+  max-width: min(100%, 260px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+.ambient-link:hover {
+  color: inherit;
+  text-decoration-color: currentColor;
+}
+
+.ambient-local-path {
+  max-width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  vertical-align: baseline;
+}
+
+.ambient-local-path-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: color-mix(in srgb, currentColor 58%, transparent);
+  text-underline-offset: 3px;
+}
+
+.ambient-local-path:hover .ambient-local-path-label {
+  text-decoration-color: currentColor;
+}
+
+.ambient-local-path-icon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  transform: translateY(1px);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.84;
+}
+
+.ambient-local-image-preview {
+  width: min(100%, 236px);
+  height: 148px;
+  margin-top: 9px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--ambient-card-border) 86%, transparent);
+  border-radius: 8px;
+  display: block;
+  overflow: hidden;
+  background: var(--ambient-soft);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.ambient-local-image-preview img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+}
+
+.ambient-link-icon {
+  width: 10px;
+  height: 10px;
+  transform: translateY(1px);
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.ambient-message.previous p,
+.ambient-message.previous ul,
+.ambient-message.previous ol {
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+
+.ambient-message.user-message {
+  align-self: flex-end;
+  max-width: 88%;
+  padding: 7px 9px;
+  border-radius: 10px;
+  background: var(--ambient-soft);
+  color: var(--ambient-message);
+  font-size: 12px;
+  line-height: 1.35;
+  -webkit-app-region: no-drag;
+}
+
+.ambient-message.user-message.is-new {
+  animation: user-message-in 180ms cubic-bezier(0.2, 0.85, 0.2, 1) both;
+}
+
+.ambient-message.user-message .user-message-word {
+  animation-duration: 135ms;
+}
+
+.ambient-message.user-message.previous {
+  color: var(--ambient-muted);
+}
+
+.ambient-message.user-message .mention-token {
+  display: inline;
+  border-radius: 5px;
+  padding: 0 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.ambient-message.user-message .mention-token-person {
+  color: color-mix(in srgb, var(--ambient-message) 88%, var(--ambient-person-mention));
+  background: var(--ambient-person-mention-bg);
+}
+
+.ambient-message.user-message .mention-token-skill {
+  color: var(--ambient-skill-mention);
+  background: var(--ambient-skill-mention-bg);
+}
+
+.ambient-message.user-message.previous .mention-token-person,
+.ambient-message.user-message.previous .mention-token-skill {
+  color: var(--ambient-message);
+}
+
+.ambient-user-action {
+  width: 100%;
+  display: block;
+  color: var(--ambient-muted);
+  background: transparent;
+  font-size: 12px;
+  line-height: 1.3;
+  -webkit-app-region: no-drag;
+}
+
+.ambient-user-action.previous {
+  color: var(--ambient-muted);
+}
+
+.ambient-user-action-head {
+  width: 100%;
+  min-height: 20px;
+  padding: 0;
+  border: 0;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 20px 12px;
+  align-items: center;
+  gap: 7px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.ambient-user-action-icon {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+}
+
+.ambient-user-action-icon svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ambient-user-action-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ambient-user-action-chevron {
+  width: 5px;
+  height: 5px;
+  justify-self: end;
+  border-right: 1.4px solid currentColor;
+  border-bottom: 1.4px solid currentColor;
+  opacity: 0;
+  transform: translateY(-1px) rotate(45deg);
+  transition: opacity 130ms ease, transform 130ms ease;
+}
+
+.ambient-computer-stop-wrap {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ambient-computer-stop {
+  width: 19px;
+  height: 19px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--ambient-muted) 88%, transparent);
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: default;
+  opacity: 0;
+  transform: scale(0.96);
+  transition: opacity 130ms ease, transform 130ms ease, background 130ms ease, color 130ms ease;
+}
+
+.ambient-user-action.is-computer-use-active:not([data-run-state="complete"]) .ambient-computer-stop {
+  display: inline-flex;
+  opacity: 1;
+  transform: scale(1);
+  cursor: pointer;
+}
+
+.ambient-user-action.is-computer-use-active:not([data-run-state="complete"]) .ambient-user-action-head:hover .ambient-computer-stop,
+.ambient-user-action.is-computer-use-active:not([data-run-state="complete"]) .ambient-user-action-head:focus-within .ambient-computer-stop,
+.ambient-user-action.is-stopping .ambient-computer-stop {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.ambient-computer-stop:hover {
+  color: var(--ambient-text);
+  background: var(--ambient-soft-hover);
+}
+
+.ambient-computer-stop span {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.ambient-user-action.is-stopping .ambient-computer-stop span {
+  animation: voice-pulse 780ms ease-in-out infinite;
+}
+
+.ambient-user-action.has-steps .ambient-user-action-chevron {
+  opacity: 0.6;
+}
+
+.ambient-user-action.has-steps .ambient-user-action-head:hover .ambient-user-action-chevron {
+  opacity: 1;
+}
+
+.ambient-user-action.expanded .ambient-user-action-chevron {
+  transform: translateY(1px) rotate(225deg);
+}
+
+.ambient-user-action-steps-shell {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 220ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.ambient-user-action-current-step {
+  min-height: 18px;
+  margin: 4px 0 0;
+  display: block;
+  color: var(--ambient-muted);
+  font-size: 12px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ambient-user-action-current-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ambient-user-action-current-step[hidden] {
+  display: none;
+}
+
+.ambient-user-action-current-step.running .ambient-user-action-current-text,
+.ambient-user-action-current-step.needs_approval .ambient-user-action-current-text {
+  background: linear-gradient(100deg, var(--ambient-shimmer-base) 0%, var(--ambient-shimmer-base) 36%, var(--ambient-shimmer-peak) 50%, var(--ambient-shimmer-base) 64%, var(--ambient-shimmer-base) 100%);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 2200ms linear infinite;
+  will-change: background-position;
+}
+
+.ambient-user-action-steps {
+  margin: 6px 0 1px;
+  padding-left: 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: decimal;
+}
+
+.ambient-user-action-step {
+  display: list-item;
+  padding-left: 2px;
+  color: var(--ambient-muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.ambient-user-action-step::marker {
+  color: color-mix(in srgb, var(--ambient-muted) 82%, transparent);
+  font-size: 10px;
+}
+
+.ambient-user-action-step.running .ambient-user-action-step-text,
+.ambient-user-action-step.needs_approval .ambient-user-action-step-text {
+  background: linear-gradient(100deg, var(--ambient-shimmer-base) 0%, var(--ambient-shimmer-base) 36%, var(--ambient-shimmer-peak) 50%, var(--ambient-shimmer-base) 64%, var(--ambient-shimmer-base) 100%);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2200ms linear infinite;
+}
+
+.ambient-user-action.is-waiting-next-step .ambient-user-action-step:last-child .ambient-user-action-step-text {
+  background: linear-gradient(100deg, var(--ambient-shimmer-base) 0%, var(--ambient-shimmer-base) 36%, var(--ambient-shimmer-peak) 50%, var(--ambient-shimmer-base) 64%, var(--ambient-shimmer-base) 100%);
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 2200ms linear infinite;
+}
+
+.thinking {
+  height: 12px;
+  margin-top: 5px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.thinking[hidden] {
+  display: none;
+}
+
+.thinking span {
+  width: 3.5px;
+  height: 3.5px;
+  border-radius: 999px;
+  background: var(--ambient-muted);
+  animation: breathe 1250ms ease-in-out infinite;
+}
+
+.thinking span:nth-child(2) {
+  animation-delay: 120ms;
+}
+
+.thinking span:nth-child(3) {
+  animation-delay: 240ms;
+}
+
+.ambient-actions {
+  position: relative;
+  z-index: 6;
+  flex: 0 0 auto;
+  margin-top: 14px;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.ambient-actions[hidden] {
+  display: none;
+}
+
+.ambient-button[hidden] {
+  display: none;
+}
+
+.ambient-card.is-computer-approval [data-open-draft],
+.ambient-card.is-computer-risk-approval [data-open-draft] {
+  order: 1;
+}
+
+.ambient-card.is-computer-approval [data-always-allow],
+.ambient-card.is-computer-risk-approval [data-always-allow] {
+  order: 2;
+}
+
+.ambient-card.is-computer-approval [data-ignore],
+.ambient-card.is-computer-risk-approval [data-ignore] {
+  order: 3;
+}
+
+.ambient-actions:not([hidden]) {
+  animation: bottom-controls-in 150ms ease both;
+}
+
+.ambient-card.bottom-controls-waiting .ambient-actions,
+.ambient-card.bottom-controls-waiting .ambient-followup {
+  opacity: 0;
+  pointer-events: none;
+  animation: none;
+}
+
+.ambient-button {
+  height: 28px;
+  border-radius: 8px;
+  padding: 0 10px;
+  border: 0;
+  color: var(--ambient-message);
+  background: var(--ambient-soft);
+  font: inherit;
+  cursor: default;
+  transition: background-color 130ms ease, color 130ms ease;
+  -webkit-app-region: no-drag;
+}
+
+.ambient-button-quiet {
+  color: var(--ambient-muted);
+  background: transparent;
+}
+
+.ambient-button:hover {
+  color: var(--ambient-text);
+  background: var(--ambient-soft-hover);
+}
+
+.ambient-button-quiet:hover {
+  color: var(--ambient-text);
+  background: transparent;
+}
+
+.ambient-button:active {
+  background: var(--ambient-soft-hover);
+}
+
+.ambient-button-quiet:active {
+  background: transparent;
+}
+
+.ambient-followup {
+  flex: 0 0 auto;
+  position: relative;
+  margin-top: 10px;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px;
+  border: 1px solid var(--ambient-card-border);
+  border-radius: 11px;
+  background: var(--ambient-soft);
+  -webkit-app-region: no-drag;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    min-height 150ms cubic-bezier(0.2, 0.9, 0.2, 1),
+    opacity 150ms ease;
+}
+
+.ambient-followup.is-multiline {
+  align-items: flex-start;
+}
+
+.followup-input-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  min-height: 26px;
+}
+
+.ambient-followup.is-multiline .followup-input-wrap {
+  align-items: flex-start;
+}
+
+.followup-highlight-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  min-height: 26px;
+  max-height: 76px;
+  padding: 3px 0;
+  overflow: hidden;
+  pointer-events: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: transparent;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  opacity: 0;
+}
+
+.followup-highlight-layer.is-visible {
+  opacity: 1;
+}
+
+.followup-highlight-layer .mention-token {
+  border-radius: 5px;
+  padding: 0;
+}
+
+.followup-highlight-layer .mention-token-person {
+  color: transparent;
+  background: var(--ambient-person-mention-bg);
+}
+
+.followup-highlight-layer .mention-token-skill {
+  color: transparent;
+  background: var(--ambient-skill-mention-bg);
+}
+
+.followup-highlight-layer.is-prefill-spotlight .mention-token-skill {
+  background:
+    linear-gradient(
+      105deg,
+      var(--ambient-skill-mention-bg) 0%,
+      var(--ambient-skill-mention-bg) 34%,
+      var(--ambient-skill-mention-bg-strong) 50%,
+      var(--ambient-skill-mention-bg) 66%,
+      var(--ambient-skill-mention-bg) 100%
+    );
+  background-size: 240% 100%;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--ambient-skill-mention) 22%, transparent);
+  animation: prefill-token-shimmer 900ms cubic-bezier(0.2, 0.86, 0.2, 1) both;
+}
+
+.ambient-followup[hidden] {
+  display: none;
+}
+
+.ambient-followup.is-revealing {
+  animation: bottom-controls-in 150ms ease both;
+}
+
+.ambient-followup textarea {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 26px;
+  max-height: 76px;
+  border: 0;
+  outline: 0;
+  padding: 3px 0;
+  resize: none;
+  overflow: hidden;
+  color: var(--ambient-message);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  transition: height 150ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.ambient-followup textarea.has-mention-highlights {
+  color: var(--ambient-message);
+  caret-color: var(--ambient-message);
+  -webkit-text-fill-color: var(--ambient-message);
+}
+
+.ambient-followup textarea::placeholder {
+  color: var(--ambient-subtle);
+}
+
+.mention-menu {
+  position: fixed;
+  left: var(--mention-menu-left, 0px);
+  top: var(--mention-menu-top, 0px);
+  width: var(--mention-menu-width, auto);
+  max-height: var(--mention-menu-max-height, 182px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: 5px;
+  border: 1px solid var(--ambient-card-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--ambient-tooltip-bg) 96%, transparent);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.24),
+    0 1px 3px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(44px) saturate(1.18);
+  -webkit-backdrop-filter: blur(44px) saturate(1.18);
+  z-index: 30;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(5px) scale(0.985);
+  transform-origin: top center;
+  transition:
+    opacity 85ms ease,
+    transform 85ms cubic-bezier(0.2, 0.86, 0.2, 1);
+  will-change: opacity, transform;
+}
+
+.mention-menu[data-placement="above"] {
+  transform: translateY(-5px) scale(0.985);
+  transform-origin: bottom center;
+}
+
+.mention-menu.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+}
+
+.mention-menu[hidden] {
+  display: none;
+}
+
+.mention-option {
+  width: 100%;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 7px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ambient-message);
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  cursor: default;
+}
+
+.mention-option-main:has(.mention-option-meta) .mention-option-name {
+  line-height: 16px;
+}
+
+.mention-option.is-active,
+.mention-option:hover {
+  background: var(--ambient-menu-row-hover);
+}
+
+.mention-option-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.mention-option-icon-person {
+  color: white;
+  background: var(--ambient-person-icon-bg);
+}
+
+.mention-option-initials {
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.mention-option-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.mention-option-icon svg {
+  width: 10.5px;
+  height: 10.5px;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mention-option-icon-skill {
+  color: var(--ambient-skill-mention);
+  background: var(--ambient-skill-mention-bg);
+}
+
+.mention-option-main {
+  min-width: 0;
+}
+
+.mention-option-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 400;
+}
+
+.mention-option-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+  color: var(--ambient-muted);
+  font-size: 11px;
+  line-height: 13px;
+  font-weight: 400;
+}
+
+.mention-option-kind {
+  color: var(--ambient-muted);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.tooltip-wrap {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ambient-tooltip {
+  position: fixed;
+  left: var(--tooltip-left, 0px);
+  top: var(--tooltip-top, 0px);
+  width: max-content;
+  max-width: min(360px, calc(100vw - 16px));
+  padding: 7px 11px 8px;
+  border: 1px solid var(--ambient-card-border);
+  border-radius: 11px;
+  color: var(--ambient-text);
+  background: var(--ambient-tooltip-bg);
+  box-shadow: 0 12px 34px var(--ambient-shadow);
+  backdrop-filter: blur(24px) saturate(1.05);
+  -webkit-backdrop-filter: blur(24px) saturate(1.05);
+  font-size: 13px;
+  line-height: 1.25;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  opacity: 0;
+  transform: translateX(-50%) translateY(4px) scale(0.98);
+  transform-origin: center bottom;
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 160ms cubic-bezier(0.2, 0.9, 0.2, 1);
+  z-index: 20;
+}
+
+.ambient-tooltip span {
+  display: block;
+}
+
+.ambient-tooltip span:first-child {
+  color: var(--ambient-text);
+}
+
+.ambient-tooltip span + span {
+  margin-top: 5px;
+  color: var(--ambient-muted);
+  font-size: 12px;
+}
+
+.ambient-tooltip kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 18px;
+  margin-top: 7px;
+  padding: 0 6px;
+  border: 1px solid var(--ambient-card-border);
+  border-radius: 6px;
+  color: var(--ambient-text);
+  background: color-mix(in srgb, var(--ambient-soft) 74%, transparent);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.ambient-tooltip.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+
+.response-feedback-tooltip {
+  padding: 6px 9px;
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.ambient-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(10px) saturate(1.04);
+  -webkit-backdrop-filter: blur(10px) saturate(1.04);
+  -webkit-app-region: no-drag;
+}
+
+.ambient-modal-backdrop[hidden] {
+  display: none;
+}
+
+.ambient-modal {
+  width: min(100%, 430px);
+  padding: 16px;
+  border: 1px solid var(--ambient-card-border);
+  border-radius: 14px;
+  color: var(--ambient-text);
+  background: rgba(34, 34, 33, 0.92);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+  animation: ambient-modal-in 160ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+}
+
+.ambient-modal-title {
+  font-size: 14px;
+  line-height: 1.25;
+  font-weight: 400;
+  color: var(--ambient-text);
+}
+
+.ambient-modal-subtitle {
+  margin-top: 5px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--ambient-muted);
+}
+
+.ambient-modal textarea {
+  width: 100%;
+  min-height: 76px;
+  margin-top: 14px;
+  padding: 10px 11px;
+  border: 1px solid var(--ambient-card-border);
+  border-radius: 12px;
+  outline: 0;
+  resize: vertical;
+  color: rgba(255, 255, 255, 0.90);
+  background: rgba(255, 255, 255, 0.035);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ambient-modal textarea::placeholder {
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.ambient-modal textarea:focus {
+  border-color: color-mix(in srgb, var(--ambient-text) 26%, var(--ambient-card-border));
+  background: rgba(255, 255, 255, 0.045);
+}
+
+:root[data-theme="light"] .ambient-modal {
+  border-color: rgba(0, 0, 0, 0.10);
+  background: rgba(246, 246, 243, 0.94);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.20);
+}
+
+:root[data-theme="light"] .ambient-modal textarea {
+  border-color: rgba(0, 0, 0, 0.10);
+  color: rgba(0, 0, 0, 0.84);
+  background: rgba(0, 0, 0, 0.035);
+}
+
+:root[data-theme="light"] .ambient-modal textarea::placeholder {
+  color: rgba(0, 0, 0, 0.36);
+}
+
+:root[data-theme="light"] .ambient-modal textarea:focus {
+  background: rgba(0, 0, 0, 0.045);
+}
+
+:root[data-theme="light"] .followup-highlight-layer .mention-token-person {
+  color: transparent;
+  background: var(--ambient-person-mention-bg);
+}
+
+:root[data-theme="light"] .followup-highlight-layer .mention-token-skill {
+  color: transparent;
+  background: var(--ambient-skill-mention-bg);
+}
+
+:root[data-theme="light"] .followup-highlight-layer.is-prefill-spotlight .mention-token-skill {
+  background:
+    linear-gradient(
+      105deg,
+      var(--ambient-skill-mention-bg) 0%,
+      var(--ambient-skill-mention-bg) 34%,
+      var(--ambient-skill-mention-bg-strong) 50%,
+      var(--ambient-skill-mention-bg) 66%,
+      var(--ambient-skill-mention-bg) 100%
+    );
+  background-size: 240% 100%;
+}
+
+:root[data-theme="light"] .mention-menu {
+  border-color: rgba(0, 0, 0, 0.10);
+  background: #ffffff;
+  box-shadow:
+    0 10px 22px rgba(0, 0, 0, 0.10),
+    0 1px 3px rgba(0, 0, 0, 0.07);
+}
+
+:root[data-theme="light"] .mention-option.is-active,
+:root[data-theme="light"] .mention-option:hover {
+  background: var(--ambient-menu-row-hover);
+}
+
+:root[data-theme="light"] .mention-option-icon {
+  color: rgba(0, 0, 0, 0.48);
+  background: rgba(0, 0, 0, 0.045);
+}
+
+:root[data-theme="light"] .mention-option-icon-person {
+  color: white;
+  background: var(--ambient-person-icon-bg);
+}
+
+:root[data-theme="light"] .mention-option-icon-skill {
+  color: var(--ambient-skill-mention);
+  background: var(--ambient-skill-mention-bg);
+}
+
+:root[data-theme="light"] .ambient-button:not(.ambient-button-quiet),
+:root[data-theme="light"] .ambient-modal-button:not(.ambient-modal-button-quiet) {
+  background: var(--ambient-soft-hover);
+}
+
+:root[data-theme="light"] .ambient-button:not(.ambient-button-quiet):hover,
+:root[data-theme="light"] .ambient-modal-button:not(.ambient-modal-button-quiet):hover {
+  background: #dedfe0;
+}
+
+:root[data-theme="light"] .ambient-message.user-message {
+  background: var(--ambient-soft-hover);
+}
+
+.ambient-modal-disclaimer {
+  margin-top: 9px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ambient-muted);
+}
+
+.ambient-info-button {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ambient-muted);
+  background: transparent;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: default;
+  transition: color 130ms ease;
+}
+
+.ambient-info-button:hover,
+.ambient-info-button:focus-visible {
+  color: var(--ambient-text);
+  outline: none;
+}
+
+.ambient-info-button svg {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ambient-modal-actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.ambient-modal-button {
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ambient-text);
+  background: var(--ambient-soft-hover);
+  font: inherit;
+  font-size: 13px;
+  line-height: 28px;
+  cursor: default;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: background 130ms ease, color 130ms ease;
+}
+
+.ambient-modal-button:hover {
+  background: color-mix(in srgb, var(--ambient-soft-hover) 74%, var(--ambient-text) 8%);
+}
+
+.ambient-modal-button-quiet {
+  color: var(--ambient-muted);
+  background: transparent;
+}
+
+.ambient-modal-button-quiet:hover {
+  color: var(--ambient-text);
+  background: transparent;
+}
+
+.voice-button,
+.send-button {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  color: var(--ambient-muted);
+  background: transparent;
+  transition: background-color 130ms ease, color 130ms ease, transform 130ms ease;
+}
+
+.voice-button:hover,
+.send-button:hover {
+  color: var(--ambient-text);
+  background: var(--ambient-soft-hover);
+}
+
+.voice-button:disabled,
+.send-button:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.voice-button.voice-unavailable {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.voice-button.voice-unavailable:hover {
+  color: var(--ambient-muted);
+  background: transparent;
+}
+
+.voice-button.processing:disabled {
+  opacity: 1;
+}
+
+.ambient-followup.busy {
+  opacity: 0.88;
+}
+
+.ambient-followup.busy textarea {
+  cursor: default;
+}
+
+.voice-button.connecting,
+.voice-button.listening,
+.voice-button.processing {
+  color: var(--ambient-text);
+  background: var(--ambient-soft-hover);
+}
+
+.voice-icon,
+.voice-stop-icon,
+.voice-spinner {
+  display: block;
+}
+
+.voice-icon {
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.45;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.voice-button.connecting .voice-icon {
+  animation: voice-pulse 780ms ease-in-out infinite;
+}
+
+.voice-stop-icon {
+  display: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: currentColor;
+  box-shadow: 0 0 10px color-mix(in srgb, currentColor 28%, transparent);
+}
+
+.voice-spinner {
+  display: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 999px;
+  border: 1.5px solid color-mix(in srgb, currentColor 24%, transparent);
+  border-top-color: currentColor;
+  animation: spinner-spin 680ms linear infinite;
+}
+
+.voice-button.listening .voice-icon,
+.voice-button.processing .voice-icon,
+.voice-button.processing .voice-stop-icon {
+  display: none;
+}
+
+.voice-button.listening .voice-stop-icon,
+.voice-button.processing .voice-spinner {
+  display: block;
+}
+
+.send-button svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.word {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(3px);
+  animation: word-in 125ms ease-out forwards;
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--ambient-enter-y)) scale(0.972);
+    filter: blur(5px);
+  }
+  58% {
+    opacity: 1;
+    filter: blur(1.2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes ambient-dismiss {
+  0% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0);
+    border-color: var(--ambient-card-border);
+  }
+  58% {
+    opacity: 0.62;
+    transform: translate3d(8px, -5px, 0) scale(0.972);
+    filter: blur(0.8px);
+    border-color: color-mix(in srgb, var(--ambient-card-border) 55%, transparent);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(14px, -10px, 0) scale(0.935);
+    filter: blur(2.5px);
+    border-color: transparent;
+    box-shadow:
+      0 3px 8px rgba(0, 0, 0, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.015);
+  }
+}
+
+@keyframes command-prompt-reveal {
+  from {
+    opacity: 0;
+    transform: translateX(-5px);
+    filter: blur(3px);
+    clip-path: inset(0 100% 0 0);
+  }
+  60% {
+    opacity: 1;
+    filter: blur(0.8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+    filter: blur(0);
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes command-prompt-word-in {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes prefill-token-shimmer {
+  from {
+    background-position: 145% 0;
+    filter: brightness(1);
+  }
+  45% {
+    filter: brightness(1.18);
+  }
+  to {
+    background-position: -145% 0;
+    filter: brightness(1);
+  }
+}
+
+@keyframes command-border-orbit {
+  to {
+    --command-angle: 360deg;
+  }
+}
+
+@keyframes command-mist-flow {
+  0% {
+    transform: translate3d(-13%, -9%, 0) rotate(-2deg) scale(1);
+    background-position: 18% 10%, 82% 64%;
+  }
+  28% {
+    transform: translate3d(11%, -2%, 0) rotate(4deg) scale(1.07);
+    background-position: 66% 18%, 42% 72%;
+  }
+  58% {
+    transform: translate3d(7%, 11%, 0) rotate(-5deg) scale(1.04);
+    background-position: 72% 74%, 34% 28%;
+  }
+  82% {
+    transform: translate3d(-8%, 7%, 0) rotate(3deg) scale(1.08);
+    background-position: 28% 66%, 76% 24%;
+  }
+  100% {
+    transform: translate3d(-13%, -9%, 0) rotate(-2deg) scale(1);
+    background-position: 18% 10%, 82% 64%;
+  }
+}
+
+@keyframes bottom-controls-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes feedback-controls-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes ambient-embedded-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.992);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes ambient-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px) scale(0.985);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes fragment-away {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.72) rotate(0deg);
+    filter: blur(0);
+  }
+  18% {
+    opacity: 0.92;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0.18) rotate(var(--rot));
+    filter: blur(4px);
+  }
+}
+
+@keyframes breathe {
+  0%, 100% {
+    opacity: 0.22;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 0.78;
+    transform: scale(1);
+  }
+}
+
+@keyframes voice-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 0 transparent);
+    transform: scale(0.96);
+  }
+  50% {
+    filter: drop-shadow(0 0 8px var(--ambient-glow));
+    transform: scale(1.06);
+  }
+}
+
+@keyframes spinner-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes word-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes user-message-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+    filter: blur(1.2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes ambient-expand-content {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.995);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 140% 0;
+  }
+  to {
+    background-position: -140% 0;
+  }
+}

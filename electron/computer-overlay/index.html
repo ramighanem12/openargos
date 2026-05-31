@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="overlay-pill" role="status" aria-live="polite">
+      <div class="brand-mark" aria-hidden="true"></div>
+      <div class="copy">
+        <div class="title">OpenArgos is using your screen</div>
+        <div class="status" data-status>Starting</div>
+      </div>
+      <button class="stop-button" type="button" data-stop aria-label="Stop Computer Use">
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="4.75" y="4.75" width="6.5" height="6.5" rx="1.6" fill="currentColor"/>
+        </svg>
+      </button>
+    </div>
+    <script src="./renderer.js"></script>
+  </body>
+</html>

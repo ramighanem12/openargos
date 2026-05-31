@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/*
+!build/
+!build/entitlements.mac.plist
+!build/entitlements.inherit.mac.plist
+local-certs/
+native/*/build/
+native/*/bin/
+.DS_Store
+*.log

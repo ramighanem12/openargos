@@ -1,0 +1,9 @@
+{
+  "name": "macos-permissions",
+  "version": "0.1.0",
+  "main": "index.js",
+  "private": true,
+  "scripts": {
+    "install": "node-gyp rebuild"
+  }
+}

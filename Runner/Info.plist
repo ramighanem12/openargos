@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDisplayName</key>
+  <string>OpenArgos</string>
+  <key>CFBundleExecutable</key>
+  <string>OpenArgos</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
+  <key>CFBundleIdentifier</key>
+  <string>com.openargos.desktop</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>OpenArgos</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>13.0</string>
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>NSScreenCaptureUsageDescription</key>
+  <string>OpenArgos needs Screen Recording permission to answer questions about your visible screen and perform approved Computer Use actions.</string>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>OpenArgos needs microphone access for voice input.</string>
+  <key>NSAppleEventsUsageDescription</key>
+  <string>OpenArgos uses automation to read active app, window, and browser-tab metadata for screen-aware answers.</string>
+</dict>
+</plist>

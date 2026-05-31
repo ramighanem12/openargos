@@ -1,0 +1,97 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+  user-select: none;
+}
+
+body {
+  display: grid;
+  place-items: center;
+}
+
+.overlay-pill {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(20, 20, 19, 0.82);
+  color: #f4f1ea;
+  backdrop-filter: blur(22px) saturate(1.18);
+  -webkit-backdrop-filter: blur(22px) saturate(1.18);
+}
+
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  background: url("../renderer/assets/openargos-ambient-icon.png") center / contain no-repeat;
+}
+
+.copy {
+  min-width: 0;
+}
+
+.title,
+.status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.status {
+  margin-top: 1px;
+  color: rgba(244, 241, 234, 0.66);
+  font-size: 11px;
+  font-weight: 520;
+  letter-spacing: 0;
+}
+
+.stop-button {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f4f1ea;
+  cursor: default;
+}
+
+.stop-button:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.stop-button:active,
+.stop-button.is-stopping {
+  background: rgba(255, 91, 91, 0.28);
+}
+
+.stop-button:disabled {
+  opacity: 0.68;
+}
+
+.stop-button svg {
+  width: 14px;
+  height: 14px;
+}

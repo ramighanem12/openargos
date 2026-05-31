@@ -1,0 +1,92 @@
+{
+  "name": "openargos",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Local-first ambient desktop assistant",
+  "license": "MIT",
+  "author": "OpenArgos contributors",
+  "homepage": "https://github.com/ramighanem12/openargos",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ramighanem12/openargos.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ramighanem12/openargos/issues"
+  },
+  "main": "electron/main.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "electron .",
+    "build:native": "npm install --prefix native/macos-permissions",
+    "dist:mac": "bash scripts/build-mac.sh",
+    "release:mac": "OPENARGOS_RELEASE_SIGN=1 OPENARGOS_NOTARIZE=1 bash scripts/build-mac.sh"
+  },
+  "build": {
+    "appId": "com.openargos.desktop",
+    "productName": "OpenArgos",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "dmg": {
+      "title": "OpenArgos ${version}",
+      "contents": [
+        {
+          "x": 140,
+          "y": 220
+        },
+        {
+          "x": 420,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ]
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "Runner/Assets/DockIcon.icns",
+      "extendInfo": {
+        "NSScreenCaptureUsageDescription": "OpenArgos needs Screen Recording permission to answer questions about your visible screen and perform approved Computer Use actions.",
+        "NSAudioCaptureUsageDescription": "OpenArgos needs system audio capture access when macOS groups screen and system audio recording permissions.",
+        "NSMicrophoneUsageDescription": "OpenArgos needs microphone access for voice input.",
+        "NSAppleEventsUsageDescription": "OpenArgos uses automation to read active app, window, and browser-tab metadata for screen-aware answers.",
+        "LSUIElement": false
+      },
+      "identity": null,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.inherit.mac.plist",
+      "target": [
+        "dir",
+        "dmg"
+      ]
+    },
+    "files": [
+      "electron/**/*",
+      "electron/ambient/assets/**/*",
+      "node_modules/eventemitter3/**/*",
+      "node_modules/macos-permissions/**/*",
+      "Runner/Assets/AppIcon.png",
+      "Runner/Assets/AppIcon.icns",
+      "Runner/Assets/DockIcon.png",
+      "Runner/Assets/DockIcon.icns",
+      "Runner/Assets/MenuBarIcon.png",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "electron/ambient/assets/AppIcon.png",
+        "to": "OpenArgosAmbientIcon.png"
+      }
+    ]
+  },
+  "devDependencies": {
+    "electron": "^42.2.0",
+    "electron-builder": "^26.8.1"
+  },
+  "dependencies": {
+    "macos-permissions": "file:native/macos-permissions"
+  },
+  "overrides": {
+    "tmp": "^0.2.6"
+  }
+}

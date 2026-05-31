@@ -1,0 +1,200 @@
+# OpenArgos
+
+OpenArgos is a local-first Mac assistant you run with your own AI provider keys.
+It gives you a small desktop chat window, screen-aware answers, optional voice input, local memories, and approved Computer Use for operating apps or browsers.
+
+No hosted OpenArgos account is required. Your chats, memories, preferences, and saved provider keys stay on your Mac by default.
+
+## What Works Today
+
+- Chat with your own model key
+- Screen-aware answers when you grant Screen Recording permission
+- Computer Use for approved browser/app actions
+- A background browser for public web tasks that do not need your logged-in session
+- Voice input with a configured transcription provider
+- Local memories you can turn on/off, edit, or reset
+- Provider keys stored locally and encrypted per install
+- macOS menu bar + Dock app behavior
+
+Supported model providers:
+
+- OpenAI
+- Anthropic
+- OpenRouter
+- Google Gemini
+- xAI
+
+Supported voice transcription providers:
+
+- OpenAI, using your saved OpenAI key
+- Groq, using your saved Groq key
+
+## Requirements
+
+- macOS 13 or newer
+- Node.js 20 or newer
+- npm
+- Xcode Command Line Tools
+
+If you do not already have Apple's command line tools:
+
+```sh
+xcode-select --install
+```
+
+## Run It Locally
+
+Clone the repo:
+
+```sh
+git clone https://github.com/ramighanem12/openargos.git
+cd openargos
+```
+
+Install dependencies:
+
+```sh
+npm install
+```
+
+Start the app:
+
+```sh
+npm start
+```
+
+OpenArgos will launch as a normal Mac app and also create a menu bar item.
+
+## First Setup
+
+1. Open `Settings > Models`.
+2. Add at least one provider key.
+3. Pick an LLM model.
+4. Optional: pick a voice transcription route if you want voice input.
+5. Go to `Settings > Permissions` and configure the macOS permissions you want to use.
+
+You only need the permissions for the features you turn on:
+
+- Screen Recording: lets OpenArgos answer questions about your visible screen and run approved Computer Use.
+- Accessibility: lets OpenArgos perform approved clicks, typing, and keyboard actions.
+- Microphone: enables voice input.
+- Automation: lets OpenArgos read active app, window, and browser-tab metadata.
+
+If macOS permissions get stuck during local development, remove OpenArgos from the relevant System Settings privacy section and relaunch the app.
+
+## Using OpenArgos
+
+Open a new chat from the app or menu bar, then ask normally.
+
+Examples:
+
+```text
+Summarize what is on my screen.
+Remember that I prefer concise answers.
+Download a photo of Grace Hopper and name the file grace-hopper.
+Open Wikipedia and find the page for the Great Wall of China.
+```
+
+Computer Use always runs through the app's approval flow. For risky actions like sending messages, deleting files, posting publicly, purchasing, checkout, billing, or security changes, OpenArgos asks again before continuing.
+
+## Local Data
+
+OpenArgos stores local app data in your macOS app data directory. That includes:
+
+- chats
+- memories
+- app preferences
+- encrypted provider keys
+- local diagnostic logs
+
+Model requests go directly from your Mac to the provider whose key you configured. The default app does not require a hosted account, remote database, billing plan, organization, or team membership.
+
+## Build a Local Mac App
+
+For normal local use:
+
+```sh
+npm run dist:mac
+```
+
+Outputs:
+
+```text
+dist/mac-*/OpenArgos.app
+dist/OpenArgos-0.1.0-*.dmg
+```
+
+The local build creates or reuses a self-signed `OpenArgos Local Development` code-signing identity when possible. This helps macOS keep Screen Recording and Accessibility permissions stable across rebuilds.
+
+If that local identity cannot be created, the build falls back to ad-hoc signing. Ad-hoc builds may need to be opened from Finder with right-click > Open, and macOS may ask for permissions again after rebuilds.
+
+## Build a Public Signed Release
+
+For a GitHub Release that opens cleanly for other users, you need an Apple Developer account, a `Developer ID Application` certificate, and Apple notarization credentials.
+
+Set the signing identity, then run:
+
+```sh
+export OPENARGOS_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+export APPLE_ID="you@example.com"
+export APPLE_TEAM_ID="TEAMID"
+export APPLE_APP_SPECIFIC_PASSWORD="xxxx-xxxx-xxxx-xxxx"
+
+npm run release:mac
+```
+
+You can also notarize with App Store Connect API credentials:
+
+```sh
+export OPENARGOS_CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+export APPLE_API_KEY="KEYID"
+export APPLE_API_ISSUER="ISSUER-UUID"
+export APPLE_API_KEY_PATH="/absolute/path/AuthKey_KEYID.p8"
+
+npm run release:mac
+```
+
+`npm run release:mac` does the release sequence in the right order:
+
+1. package the app
+2. sign the app with hardened runtime
+3. build the DMG from the signed app
+4. sign the DMG
+5. submit the DMG to Apple notarization
+6. staple the notarization ticket
+
+The release script intentionally fails if Developer ID signing or notarization credentials are missing. That prevents accidentally publishing an ad-hoc signed public DMG.
+
+## Development Checks
+
+Before opening a PR or publishing a release:
+
+```sh
+node --check electron/main.js
+node --check electron/preload.js
+node --check electron/renderer/renderer.js
+node --check electron/ambient/ambient.js
+node --check electron/ambient/preload.js
+npm run dist:mac
+```
+
+Also verify that you are not committing local output or secrets:
+
+- `dist/`
+- `node_modules/`
+- `local-certs/`
+- `native/*/build/`
+- `native/*/bin/`
+- logs
+- API keys
+- Apple signing certificates
+
+## Contributing
+
+OpenArgos should stay local-first by default. Please avoid adding hosted account gates, bundled provider keys, or remote storage without a clear design discussion.
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) and [SECURITY.md](./SECURITY.md) for more.
+
+## License
+
+MIT. See [LICENSE.md](./LICENSE.md).

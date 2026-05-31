@@ -1,0 +1,936 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenArgos</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <section class="welcome-gate" data-welcome-gate hidden aria-live="polite">
+      <div data-welcome-text>Welcome</div>
+    </section>
+    <main class="shell">
+      <aside class="sidebar">
+        <div class="sidebar-chrome" aria-hidden="false">
+          <!--
+          <button class="sidebar-chrome-button sidebar-toggle-button" type="button" aria-label="Sidebar">
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <rect x="4.5" y="4.5" width="11" height="11" rx="2.2" />
+              <path d="M8 5v10" />
+            </svg>
+          </button>
+          -->
+          <button class="sidebar-chrome-button settings-back-button" type="button" data-back-to-app aria-label="Back">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+            <span>Back to app</span>
+          </button>
+        </div>
+        <nav class="tabs" aria-label="OpenArgos sections">
+          <div class="sidebar-panel sidebar-panel-app" data-sidebar-panel="app">
+            <div class="tab-group" data-sidebar="app">
+              <div class="new-chat-control is-disabled" data-new-chat-control>
+                <button class="new-chat-button" type="button" data-new-menu-trigger aria-label="New chat unavailable" aria-disabled="true" disabled>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 12h14" />
+                    <path d="M12 5v14" />
+                  </svg>
+                  <span>New chat</span>
+                  <span class="new-chat-shortcut" data-shortcut-menu-label="newChat">⌃A</span>
+                </button>
+                <span class="new-chat-disabled-tooltip" role="tooltip">
+                  <span class="row-tooltip-title" data-new-chat-tooltip-title>Add an LLM key</span>
+                  <span class="row-tooltip-body" data-new-chat-tooltip-body>Save a provider key in Settings &gt; Models to start a chat.</span>
+                </span>
+              </div>
+              <!-- Preserved dropdown version:
+              <button class="new-chat-button" type="button" data-new-menu-trigger aria-haspopup="menu" aria-expanded="false">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 12h14" />
+                  <path d="M12 5v14" />
+                </svg>
+                <span>New</span>
+                <svg class="new-chat-chevron" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+              -->
+              <!--
+              <button class="tab" data-tab="tasks">
+                <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M11 18H3" />
+                  <path d="m15 18 2 2 4-4" />
+                  <path d="M16 12H3" />
+                  <path d="M16 6H3" />
+                </svg>
+                <span>Tasks</span>
+              </button>
+              -->
+              <button class="tab settings-parent-tab chats-parent-tab active" data-tab="history" data-chats-parent aria-expanded="true">
+                <svg class="tab-icon history-tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                <span>Chats</span>
+              </button>
+              <div class="settings-subtabs chat-subtabs is-expanded" data-chat-subtabs></div>
+            </div>
+            <div class="tab-group bottom" data-sidebar="app">
+              <button class="tab" data-settings-entry>
+                <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                <span>Settings</span>
+              </button>
+            </div>
+          </div>
+          <div class="sidebar-panel sidebar-panel-settings" data-sidebar-panel="settings" hidden aria-hidden="true" inert>
+            <div class="tab-group settings-tabs" data-sidebar="settings">
+              <button class="tab active" data-tab="settings-config">
+                <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M20 7h-9" />
+                  <path d="M14 17H5" />
+                  <circle cx="17" cy="17" r="3" />
+                  <circle cx="7" cy="7" r="3" />
+                </svg>
+                <span>General</span>
+              </button>
+              <button class="tab" data-tab="settings-shortcuts">
+                <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M18 3a3 3 0 0 0-3 3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0 0-6" />
+                </svg>
+                <span>Shortcuts</span>
+              </button>
+              <button class="tab" data-tab="settings-appearance">
+                <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+                </svg>
+                <span>Appearance</span>
+              </button>
+              <button class="tab" data-tab="settings-permissions">
+                <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" />
+                  <path d="m9 12 2 2 4-4" />
+                </svg>
+                <span>Permissions</span>
+              </button>
+              <button class="tab" data-tab="settings-memory">
+                <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8Z" />
+                  <path d="M15 3v4a2 2 0 0 0 2 2h4" />
+                  <path d="M8 13h8" />
+                  <path d="M8 17h5" />
+                </svg>
+                <span>Memory</span>
+              </button>
+              <button class="tab" data-tab="settings-models">
+                <svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
+                  <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z" />
+                  <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4" />
+                  <path d="M17.599 6.5a3 3 0 0 0 .399-1.375" />
+                  <path d="M6.003 5.125A3 3 0 0 0 6.401 6.5" />
+                  <path d="M3.477 10.896a4 4 0 0 1 .585-.396" />
+                  <path d="M19.938 10.5a4 4 0 0 1 .585.396" />
+                  <path d="M6 18a4 4 0 0 1-1.967-.516" />
+                  <path d="M19.967 17.484A4 4 0 0 1 18 18" />
+                </svg>
+                <span>Models</span>
+              </button>
+            </div>
+          </div>
+        </nav>
+      </aside>
+
+      <section class="content-shell">
+        <section class="page active" id="history">
+          <div class="page-inner">
+            <h1>Chats</h1>
+            <div class="history-search" role="search">
+              <svg class="history-search-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+              <input type="search" placeholder="Search chats" autocomplete="off" spellcheck="false" data-history-search-input />
+              <button class="history-search-clear" type="button" aria-label="Clear chat search" data-history-search-clear hidden>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M18 6 6 18" />
+                  <path d="m6 6 12 12" />
+                </svg>
+              </button>
+            </div>
+            <div class="section history-section">
+              <div class="panel history-panel" data-history-panel>
+                <div class="history-empty" data-history-empty>No chats yet.</div>
+                <div class="history-list" data-history-list hidden></div>
+                <div class="history-load-more" data-history-load-more hidden>
+                  <button class="secondary-button" type="button" data-history-view-more>View more</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!--
+        <section class="page" id="tasks">
+          <div class="page-inner">
+            <h1>Tasks</h1>
+            <div class="section inbox-section">
+              <div class="inbox-toolbar tasks-toolbar">
+                <div class="theme-selector inbox-nav" aria-label="Task views">
+                  <button class="theme-option inbox-nav-tab active" type="button" data-task-view="in-progress">In progress</button>
+                  <button class="theme-option inbox-nav-tab" type="button" data-task-view="completed">Completed</button>
+                </div>
+                <button class="secondary-button inbox-request-new-button" type="button" data-task-new-button>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M5 12h14" />
+                    <path d="M12 5v14" />
+                  </svg>
+                  <span>New task</span>
+                </button>
+              </div>
+
+              <div class="panel inbox-panel" data-task-panel="in-progress">
+                <div class="inbox-list">
+                  <article class="inbox-item">
+                    <div class="inbox-avatar inbox-task-icon task-icon-analytics" aria-hidden="true">
+                      <svg viewBox="0 0 24 24">
+                        <path d="M3 3v18h18" />
+                        <path d="M7 16V9" />
+                        <path d="M12 16V5" />
+                        <path d="M17 16v-4" />
+                      </svg>
+                      <span class="task-type-tooltip" aria-hidden="true">
+                        <span class="row-tooltip-title">Analytics task</span>
+                        <span class="row-tooltip-body">Collects inputs and drafts a recurring summary.</span>
+                      </span>
+                    </div>
+                    <div class="inbox-item-copy">
+                      <div class="inbox-item-title">Preparing the weekly customer pulse</div>
+                      <div class="inbox-item-detail task-running-detail">Collecting call notes and drafting a summary.</div>
+                    </div>
+                    <div class="inbox-item-status" aria-label="In progress" title="In progress">
+                      <svg class="linear-status-icon is-in-progress" viewBox="0 0 16 16" aria-hidden="true">
+                        <circle cx="8" cy="8" r="6.2" />
+                        <path d="M8 1.8a6.2 6.2 0 0 1 6.2 6.2" />
+                      </svg>
+                    </div>
+                  </article>
+                  <article class="inbox-item">
+                    <div class="inbox-avatar inbox-task-icon task-icon-monitoring" aria-hidden="true">
+                      <svg viewBox="0 0 24 24">
+                        <path d="M2.06 12.35a1 1 0 0 1 0-.7 11.75 11.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 11.75 11.75 0 0 1-19.88 0" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                      <span class="task-type-tooltip" aria-hidden="true">
+                        <span class="row-tooltip-title">Monitoring task</span>
+                        <span class="row-tooltip-body">Watches signals and flags meaningful changes.</span>
+                      </span>
+                    </div>
+                    <div class="inbox-item-copy">
+                      <div class="inbox-item-title">Watching renewal-risk signals</div>
+                      <div class="inbox-item-detail task-running-detail">Monitoring account activity for exceptions.</div>
+                    </div>
+                    <div class="inbox-item-status" aria-label="Running" title="Running">
+                      <svg class="linear-status-icon is-in-progress" viewBox="0 0 16 16" aria-hidden="true">
+                        <circle cx="8" cy="8" r="6.2" />
+                        <path d="M8 1.8a6.2 6.2 0 0 1 6.2 6.2" />
+                      </svg>
+                    </div>
+                  </article>
+                </div>
+              </div>
+
+              <div class="panel inbox-panel" data-task-panel="completed" hidden>
+                <div class="inbox-list">
+                  <article class="inbox-item">
+                    <div class="inbox-avatar inbox-task-icon task-icon-analytics" aria-hidden="true">
+                      <svg viewBox="0 0 24 24">
+                        <path d="M3 3v18h18" />
+                        <path d="M7 16V9" />
+                        <path d="M12 16V5" />
+                        <path d="M17 16v-4" />
+                      </svg>
+                      <span class="task-type-tooltip" aria-hidden="true">
+                        <span class="row-tooltip-title">Analytics task</span>
+                        <span class="row-tooltip-body">Collected inputs and drafted a summary.</span>
+                      </span>
+                    </div>
+                    <div class="inbox-item-copy">
+                      <div class="inbox-item-title">Sent the launch-readiness summary</div>
+                      <div class="inbox-item-detail">OpenArgos collected the release notes and shared the final recap.</div>
+                    </div>
+                    <div class="inbox-item-status" aria-label="Completed" title="Completed">
+                      <svg class="linear-status-icon is-completed" viewBox="0 0 16 16" aria-hidden="true">
+                        <circle cx="8" cy="8" r="6.2" />
+                        <path d="m5.2 8.2 1.8 1.8 3.8-4" />
+                      </svg>
+                    </div>
+                  </article>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+        -->
+
+        <section class="page" id="settings-config">
+          <div class="page-inner">
+            <h1>General</h1>
+            <div class="section">
+              <div class="section-title">Configuration</div>
+              <div class="settings-panel general-panel">
+                <div class="setting-row">
+                  <div class="setting-copy">
+                    <div class="setting-title">Show in menu bar</div>
+                    <div class="setting-detail">Keep OpenArgos in the macOS menu bar when the main window is closed</div>
+                  </div>
+                  <div class="setting-control">
+                    <label class="switch">
+                      <input type="checkbox" checked data-menu-bar-toggle />
+                      <span></span>
+                    </label>
+                  </div>
+                </div>
+                <div class="setting-row" data-computer-use-row>
+                  <div class="setting-copy">
+                    <div class="setting-title">Computer Use</div>
+                    <div class="setting-detail">Let OpenArgos assist with local app and browser interactions when needed</div>
+                  </div>
+                  <div class="setting-control setting-control-tooltip-wrap" data-computer-use-control>
+                    <label class="switch" data-computer-use-switch>
+                      <input type="checkbox" data-computer-use-toggle />
+                      <span></span>
+                    </label>
+                    <span class="setting-control-tooltip setting-control-tooltip-left" data-computer-use-tooltip role="tooltip">
+                      <span class="row-tooltip-title">Select a model</span>
+                      <span class="row-tooltip-body">Choose a Computer Use-capable model in Settings &gt; Models</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="section">
+              <div class="section-title">Preferences</div>
+              <div class="settings-panel general-panel">
+                <div class="settings-list">
+                  <div class="setting-row">
+                    <div class="setting-copy">
+                      <div class="setting-title">Ambient launch sound</div>
+                      <div class="setting-detail">Play a subtle sound when OpenArgos is triggered</div>
+                    </div>
+                    <div class="setting-control">
+                      <label class="switch">
+                        <input type="checkbox" checked data-ambient-sound-toggle />
+                        <span></span>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="setting-row ambient-sound-type-row" data-ambient-sound-type-row hidden>
+                    <div class="setting-copy">
+                      <div class="setting-title">Sound</div>
+                    </div>
+                    <div class="setting-control">
+                      <div class="model-select ambient-sound-type-select" data-ambient-sound-type-select>
+                        <button class="model-select-button" type="button" data-ambient-sound-type-trigger>
+                          <span data-ambient-sound-type-label>Default chime</span>
+                          <svg class="select-chevron" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="m6 9 6 6 6-6" />
+                          </svg>
+                        </button>
+                        <div class="model-menu ambient-sound-type-menu" data-ambient-sound-type-menu hidden>
+                          <button class="model-option ambient-sound-type-option" type="button" data-ambient-sound-type-option="default">
+                            <span><span class="model-name">Default chime</span></span>
+                            <span class="model-option-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></svg></span>
+                          </button>
+                          <button class="model-option ambient-sound-type-option" type="button" data-ambient-sound-type-option="bright_ping">
+                            <span><span class="model-name">Bright ping</span></span>
+                            <span class="model-option-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></svg></span>
+                          </button>
+                          <button class="model-option ambient-sound-type-option" type="button" data-ambient-sound-type-option="focus_tap">
+                            <span><span class="model-name">Focus tap</span></span>
+                            <span class="model-option-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></svg></span>
+                          </button>
+                          <button class="model-option ambient-sound-type-option" type="button" data-ambient-sound-type-option="soft_pulse">
+                            <span><span class="model-name">Soft pulse</span></span>
+                            <span class="model-option-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></svg></span>
+                          </button>
+                          <button class="model-option ambient-sound-type-option" type="button" data-ambient-sound-type-option="glass_bell">
+                            <span><span class="model-name">Glass bell</span></span>
+                            <span class="model-option-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></svg></span>
+                          </button>
+                          <button class="model-option ambient-sound-type-option" type="button" data-ambient-sound-type-option="warm_lift">
+                            <span><span class="model-name">Warm lift</span></span>
+                            <span class="model-option-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></svg></span>
+                          </button>
+                          <button class="model-option ambient-sound-type-option" type="button" data-ambient-sound-type-option="arcade_blip">
+                            <span><span class="model-name">Arcade blip</span></span>
+                            <span class="model-option-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></svg></span>
+                          </button>
+                          <button class="model-option ambient-sound-type-option" type="button" data-ambient-sound-type-option="wood_knock">
+                            <span><span class="model-name">Wood knock</span></span>
+                            <span class="model-option-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></svg></span>
+                          </button>
+                          <button class="model-option ambient-sound-type-option" type="button" data-ambient-sound-type-option="sparkle_run">
+                            <span><span class="model-name">Sparkle run</span></span>
+                            <span class="model-option-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></svg></span>
+                          </button>
+                          <button class="model-option ambient-sound-type-option" type="button" data-ambient-sound-type-option="funk_pop">
+                            <span><span class="model-name">Funk pop</span></span>
+                            <span class="model-option-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></svg></span>
+                          </button>
+                          <button class="model-option ambient-sound-type-option" type="button" data-ambient-sound-type-option="electro_bounce">
+                            <span><span class="model-name">Electro bounce</span></span>
+                            <span class="model-option-check" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></svg></span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="setting-row">
+                    <div class="setting-copy">
+                      <div class="setting-title">Mute music while dictating</div>
+                      <div class="setting-detail">Pause music when you start recording voice input</div>
+                    </div>
+                    <div class="setting-control">
+                      <label class="switch">
+                        <input type="checkbox" data-mute-music-while-dictating-toggle />
+                        <span></span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="settings-shortcuts">
+          <div class="page-inner">
+            <h1>Shortcuts</h1>
+            <div class="section">
+              <div class="section-title">Keyboard</div>
+              <div class="settings-panel shortcuts-panel">
+                <div class="settings-list">
+                  <div class="setting-row shortcut-row">
+                    <div class="setting-copy">
+                      <div class="setting-title">New chat</div>
+                      <div class="setting-detail">Open the OpenArgos chat window from anywhere</div>
+                    </div>
+                    <div class="shortcut-control">
+                      <button class="shortcut-recorder" type="button" data-shortcut-recorder="newChat" aria-label="Change New chat shortcut">
+                        <span data-shortcut-label>⌃A</span>
+                      </button>
+                      <button class="shortcut-reset" type="button" data-shortcut-reset="newChat" aria-label="Reset New chat shortcut">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                          <path d="M3 3v5h5" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="setting-row shortcut-row">
+                    <div class="setting-copy">
+                      <div class="setting-title">Voice recording</div>
+                      <div class="setting-detail">Hold while the chat window is open to record audio</div>
+                    </div>
+                    <div class="shortcut-control">
+                      <button class="shortcut-recorder" type="button" data-shortcut-recorder="voiceRecording" aria-label="Change Voice recording shortcut">
+                        <span data-shortcut-label>⌥M</span>
+                      </button>
+                      <button class="shortcut-reset" type="button" data-shortcut-reset="voiceRecording" aria-label="Reset Voice recording shortcut">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                          <path d="M3 3v5h5" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="shortcut-status" data-shortcut-status aria-live="polite"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="settings-appearance">
+          <div class="page-inner">
+            <h1>Appearance</h1>
+            <div class="section">
+              <div class="settings-panel">
+                <div class="setting-row">
+                  <div class="setting-copy">
+                    <div class="setting-title">Theme</div>
+                    <div class="setting-detail">Use light, dark, or match your system</div>
+                  </div>
+                  <div class="setting-control">
+                    <div class="theme-selector" data-theme-selector>
+                      <button class="theme-option" type="button" data-theme-option="light">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <circle cx="12" cy="12" r="4" />
+                          <path d="M12 2v2" />
+                          <path d="M12 20v2" />
+                          <path d="m4.93 4.93 1.41 1.41" />
+                          <path d="m17.66 17.66 1.41 1.41" />
+                          <path d="M2 12h2" />
+                          <path d="M20 12h2" />
+                          <path d="m6.34 17.66-1.41 1.41" />
+                          <path d="m19.07 4.93-1.41 1.41" />
+                        </svg>
+                        <span>Light</span>
+                      </button>
+                      <button class="theme-option active" type="button" data-theme-option="dark">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401" />
+                        </svg>
+                        <span>Dark</span>
+                      </button>
+                      <button class="theme-option" type="button" data-theme-option="system">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <rect width="20" height="14" x="2" y="3" rx="2" />
+                          <path d="M8 21h8" />
+                          <path d="M12 17v4" />
+                        </svg>
+                        <span>System</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="settings-permissions">
+          <div class="page-inner">
+            <h1>Permissions</h1>
+            <div class="section">
+              <div class="section-title">System access</div>
+              <p class="permission-note">Configure each permission to allow screen awareness, computer use, and launch at login.</p>
+              <div class="settings-panel models-settings-panel">
+                <div class="settings-list">
+                  <div class="setting-row" data-permission="screenRecording">
+                    <div class="setting-copy">
+                      <div class="setting-title">Screen Recording</div>
+                      <div class="setting-detail">Allow OpenArgos to capture the visible screen for screen-aware answers</div>
+                    </div>
+                    <div class="setting-control">
+                      <button class="state-button checking" data-action="screen-recording" data-status>Checking...</button>
+                    </div>
+                  </div>
+                  <div class="setting-row dependent-setting-row" data-screen-awareness-row hidden>
+                    <div class="setting-copy">
+                      <div class="setting-title">Active screen awareness</div>
+                      <div class="setting-detail">Send the current visible app or browser view with screen-aware questions</div>
+                    </div>
+                    <div class="setting-control">
+                      <label class="switch">
+                        <input type="checkbox" checked data-screen-awareness-toggle />
+                        <span></span>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="setting-row" data-permission="accessibility">
+                    <div class="setting-copy">
+	                    <div class="setting-title">Accessibility</div>
+	                    <div class="setting-detail">Let OpenArgos assist with local app and browser interactions when needed</div>
+	                    </div>
+                    <div class="setting-control">
+                      <button class="state-button checking" data-action="accessibility" data-status>Checking...</button>
+                    </div>
+                  </div>
+                  <div class="setting-row" data-permission="launchAtLogin">
+                    <div class="setting-copy">
+                      <div class="setting-title">Launch at Login</div>
+                      <div class="setting-detail">Start OpenArgos automatically when you sign in</div>
+                    </div>
+                    <div class="setting-control">
+                      <label class="switch" data-login-switch>
+                        <input type="checkbox" data-login-toggle />
+                        <span></span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="settings-memory">
+          <div class="page-inner">
+            <h1>Memory</h1>
+            <div class="section">
+              <div class="section-title">Capture</div>
+              <div class="settings-panel">
+                <div class="settings-list">
+                  <div class="setting-row">
+                    <div class="setting-copy">
+                      <div class="setting-title">Memory capture</div>
+                      <div class="setting-detail">Let OpenArgos save and use memories in conversations</div>
+                    </div>
+                    <div class="setting-control">
+                      <label class="switch">
+                        <input type="checkbox" checked data-memory-capture-toggle />
+                        <span></span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="section memory-section" data-memory-managed>
+              <button class="secondary-button memory-add-button" data-memory-add>
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 12h14" />
+                  <path d="M12 5v14" />
+                </svg>
+                <span>Add memory</span>
+              </button>
+              <div class="section-title">Memory</div>
+              <p class="section-note">Save facts OpenArgos should remember across sessions.</p>
+              <div class="settings-panel memory-panel">
+                <div class="settings-list" data-memory-list>
+                  <div class="memory-empty" data-memory-empty>No memories saved yet.</div>
+                </div>
+              </div>
+            </div>
+            <div class="section" data-memory-managed>
+              <div class="section-title">General</div>
+              <div class="settings-panel">
+                <div class="settings-list">
+                  <div class="setting-row">
+                    <div class="setting-copy">
+                      <div class="setting-title">Reset memories</div>
+                      <div class="setting-detail">Delete all OpenArgos memories</div>
+                    </div>
+                    <div class="setting-control">
+                      <button class="danger-button" data-memory-reset aria-label="Reset memories" aria-live="polite">Reset</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="settings-models">
+          <div class="page-inner">
+            <h1>Models</h1>
+            <div class="section">
+              <div class="section-title">Local AI</div>
+              <p class="permission-note" data-model-policy-note>Choose the LLM and voice transcription routes OpenArgos should use. Provider keys stay on this device.</p>
+              <div class="settings-panel models-settings-panel" data-model-admin-panel>
+                <div class="setting-row model-setting-row">
+                  <div class="setting-copy">
+                    <div class="setting-title">LLM model</div>
+                    <div class="setting-detail" data-model-detail-copy>Used for chats and default agent tasks.</div>
+                  </div>
+                  <div class="setting-control model-setting-control">
+                    <div class="model-select" data-model-select>
+                      <button class="model-select-button" type="button" data-model-trigger>
+                        <span class="provider-logo openai-logo" data-selected-logo aria-hidden="true">
+                          <svg viewBox="0 0 700 700"><rect width="700" height="700" rx="200" fill="white"/><path d="M562.689 305.01C573.955 271.235 570.075 234.236 552.058 203.514C524.963 156.393 470.493 132.15 417.295 143.559C393.63 116.929 359.629 101.785 323.982 102.002C269.605 101.878 221.358 136.847 204.629 188.525C169.697 195.671 139.545 217.511 121.9 248.465C94.6029 295.462 100.826 354.704 137.294 395.005C126.028 428.78 129.908 465.78 147.925 496.501C175.02 543.622 229.49 567.865 282.688 556.457C306.338 583.086 340.354 598.23 376.001 597.997C430.409 598.137 478.671 563.137 495.4 511.413C530.332 504.267 560.485 482.427 578.13 451.473C605.396 404.476 599.157 345.28 562.704 304.979L562.689 305.01ZM376.032 565.586C354.259 565.617 333.169 558.007 316.456 544.072C317.216 543.669 318.535 542.94 319.389 542.413L418.273 485.372C423.332 482.504 426.436 477.126 426.405 471.313V332.074L468.196 356.177C468.646 356.394 468.941 356.828 469.003 357.324V472.631C468.941 523.906 427.367 565.478 376.032 565.586ZM176.091 480.288C165.181 461.47 161.255 439.413 164.995 418.008C165.724 418.442 167.012 419.232 167.928 419.759L266.812 476.8C271.825 479.73 278.032 479.73 283.06 476.8L403.779 407.173V455.379C403.81 455.875 403.577 456.355 403.189 456.665L303.234 514.311C258.711 539.918 201.852 524.696 176.106 480.288H176.091ZM150.066 264.694C160.929 245.845 178.077 231.43 198.5 223.943C198.5 224.796 198.453 226.299 198.453 227.353V341.451C198.422 347.249 201.526 352.627 206.569 355.495L327.288 425.107L285.496 449.21C285.077 449.489 284.55 449.535 284.084 449.334L184.114 391.641C139.684 365.942 124.445 309.164 150.051 264.709L150.066 264.694ZM493.429 344.505L372.711 274.877L414.502 250.79C414.921 250.511 415.449 250.464 415.914 250.666L515.885 308.312C560.392 333.996 575.647 390.866 549.932 435.321C539.054 454.139 521.921 468.554 501.515 476.056V358.548C501.561 352.751 498.473 347.388 493.445 344.505H493.429ZM535.019 281.977C534.29 281.527 533.002 280.752 532.086 280.225L433.202 223.184C428.189 220.254 421.982 220.254 416.954 223.184L296.235 292.811V244.605C296.204 244.109 296.437 243.629 296.825 243.319L396.78 185.72C441.303 160.067 498.225 175.334 523.892 219.82C534.74 238.607 538.666 260.602 534.988 281.977H535.019ZM273.516 367.895L231.709 343.792C231.259 343.575 230.964 343.141 230.902 342.645V227.338C230.933 176.001 272.632 134.398 324.029 134.429C345.77 134.429 366.814 142.055 383.527 155.943C382.767 156.346 381.463 157.075 380.594 157.602L281.71 214.643C276.651 217.511 273.547 222.874 273.578 228.687L273.516 367.864V367.895ZM296.22 319.007L349.991 287.991L403.763 318.991V381.008L349.991 412.009L296.22 381.008V319.007Z" fill="black"/></svg>
+                        </span>
+                        <span data-model-label>OpenRouter (Auto)</span>
+                        <svg class="select-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+                      </button>
+                      <div class="model-menu" data-model-menu hidden>
+                        <button class="model-option model-option-empty" type="button" data-model-empty disabled hidden>
+                          <span class="model-name">Add at least one key below</span>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="byok-status model-selection-status" data-model-status hidden></div>
+                  </div>
+                </div>
+                <div class="setting-row model-setting-row voice-model-setting-row" data-voice-model-row>
+                  <div class="setting-copy">
+                    <div class="setting-title">Voice transcription model</div>
+                    <div class="setting-detail">Used when recording voice in chat</div>
+                  </div>
+                  <div class="setting-control model-setting-control setting-control-tooltip-wrap" data-voice-model-control>
+                    <div class="model-select" data-voice-model-select>
+                      <button class="model-select-button" type="button" data-voice-model-trigger>
+                        <span class="provider-logo model-placeholder-logo" data-voice-selected-logo aria-hidden="true"></span>
+                        <span data-voice-model-label>Select voice model</span>
+                        <svg class="select-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+                      </button>
+                      <div class="model-menu" data-voice-model-menu hidden>
+                        <button class="model-option model-option-empty" type="button" data-voice-model-empty disabled hidden>
+                          <span class="model-name">Add an OpenAI or Groq key below</span>
+                        </button>
+                      </div>
+                    </div>
+                    <div class="byok-status model-selection-status" data-voice-model-status hidden></div>
+                    <span class="setting-control-tooltip setting-control-tooltip-left" data-voice-model-tooltip role="tooltip">
+                      <span class="row-tooltip-title">Add a voice key</span>
+                      <span class="row-tooltip-body">Add an OpenAI or Groq key below to enable voice transcription.</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="section" data-byok-section>
+              <div class="section-header-row">
+                <div class="section-title">Provider keys</div>
+              </div>
+              <div class="settings-panel byok-panel">
+                <div class="byok-provider" data-byok-provider="openai">
+                  <div class="byok-provider-header">
+                    <span class="provider-logo openai-logo" aria-hidden="true">
+                      <svg viewBox="0 0 700 700"><rect width="700" height="700" rx="200" fill="white"/><path d="M562.689 305.01C573.955 271.235 570.075 234.236 552.058 203.514C524.963 156.393 470.493 132.15 417.295 143.559C393.63 116.929 359.629 101.785 323.982 102.002C269.605 101.878 221.358 136.847 204.629 188.525C169.697 195.671 139.545 217.511 121.9 248.465C94.6029 295.462 100.826 354.704 137.294 395.005C126.028 428.78 129.908 465.78 147.925 496.501C175.02 543.622 229.49 567.865 282.688 556.457C306.338 583.086 340.354 598.23 376.001 597.997C430.409 598.137 478.671 563.137 495.4 511.413C530.332 504.267 560.485 482.427 578.13 451.473C605.396 404.476 599.157 345.28 562.704 304.979L562.689 305.01ZM376.032 565.586C354.259 565.617 333.169 558.007 316.456 544.072C317.216 543.669 318.535 542.94 319.389 542.413L418.273 485.372C423.332 482.504 426.436 477.126 426.405 471.313V332.074L468.196 356.177C468.646 356.394 468.941 356.828 469.003 357.324V472.631C468.941 523.906 427.367 565.478 376.032 565.586ZM176.091 480.288C165.181 461.47 161.255 439.413 164.995 418.008C165.724 418.442 167.012 419.232 167.928 419.759L266.812 476.8C271.825 479.73 278.032 479.73 283.06 476.8L403.779 407.173V455.379C403.81 455.875 403.577 456.355 403.189 456.665L303.234 514.311C258.711 539.918 201.852 524.696 176.106 480.288H176.091ZM150.066 264.694C160.929 245.845 178.077 231.43 198.5 223.943C198.5 224.796 198.453 226.299 198.453 227.353V341.451C198.422 347.249 201.526 352.627 206.569 355.495L327.288 425.107L285.496 449.21C285.077 449.489 284.55 449.535 284.084 449.334L184.114 391.641C139.684 365.942 124.445 309.164 150.051 264.709L150.066 264.694ZM493.429 344.505L372.711 274.877L414.502 250.79C414.921 250.511 415.449 250.464 415.914 250.666L515.885 308.312C560.392 333.996 575.647 390.866 549.932 435.321C539.054 454.139 521.921 468.554 501.515 476.056V358.548C501.561 352.751 498.473 347.388 493.445 344.505H493.429ZM535.019 281.977C534.29 281.527 533.002 280.752 532.086 280.225L433.202 223.184C428.189 220.254 421.982 220.254 416.954 223.184L296.235 292.811V244.605C296.204 244.109 296.437 243.629 296.825 243.319L396.78 185.72C441.303 160.067 498.225 175.334 523.892 219.82C534.74 238.607 538.666 260.602 534.988 281.977H535.019ZM273.516 367.895L231.709 343.792C231.259 343.575 230.964 343.141 230.902 342.645V227.338C230.933 176.001 272.632 134.398 324.029 134.429C345.77 134.429 366.814 142.055 383.527 155.943C382.767 156.346 381.463 157.075 380.594 157.602L281.71 214.643C276.651 217.511 273.547 222.874 273.578 228.687L273.516 367.864V367.895ZM296.22 319.007L349.991 287.991L403.763 318.991V381.008L349.991 412.009L296.22 381.008V319.007Z" fill="black"/></svg>
+                    </span>
+                    <div class="setting-copy">
+                      <div class="setting-title">OpenAI</div>
+                      <div class="setting-detail">Use GPT models with your own API key.</div>
+                    </div>
+                  </div>
+                  <div class="byok-key-row">
+                    <input class="byok-key-input" type="password" data-byok-key="openai" placeholder="OpenAI API key" autocomplete="off" spellcheck="false" />
+                    <button class="icon-button byok-remove-button" type="button" data-byok-remove="openai" aria-label="Remove OpenAI key" hidden>
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M3 6h18" />
+                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                        <path d="M10 11v6" />
+                        <path d="M14 11v6" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="byok-status" data-byok-status="openai">Not saved</div>
+                </div>
+                <div class="byok-provider" data-byok-provider="anthropic">
+                  <div class="byok-provider-header">
+                    <span class="provider-logo anthropic-logo" aria-hidden="true">
+                      <img src="./assets/claude-ai-symbol.svg" alt="" />
+                    </span>
+                    <div class="setting-copy">
+                      <div class="setting-title">Anthropic</div>
+                      <div class="setting-detail">Use Claude models with your own API key.</div>
+                    </div>
+                  </div>
+                  <div class="byok-key-row">
+                    <input class="byok-key-input" type="password" data-byok-key="anthropic" placeholder="Anthropic API key" autocomplete="off" spellcheck="false" />
+                    <button class="icon-button byok-remove-button" type="button" data-byok-remove="anthropic" aria-label="Remove Anthropic key" hidden>
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M3 6h18" />
+                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                        <path d="M10 11v6" />
+                        <path d="M14 11v6" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="byok-status" data-byok-status="anthropic">Not saved</div>
+                </div>
+                <div class="byok-provider" data-byok-provider="openrouter">
+                  <div class="byok-provider-header">
+                    <span class="provider-logo openrouter-logo" aria-hidden="true"><img src="./assets/openrouter.png" alt="" /></span>
+                    <div class="setting-copy">
+                      <div class="setting-title">OpenRouter</div>
+                      <div class="setting-detail">Use one OpenRouter key to access multiple model providers.</div>
+                    </div>
+                  </div>
+                  <div class="byok-key-row">
+                    <input class="byok-key-input" type="password" data-byok-key="openrouter" placeholder="OpenRouter API key" autocomplete="off" spellcheck="false" />
+                    <button class="icon-button byok-remove-button" type="button" data-byok-remove="openrouter" aria-label="Remove OpenRouter key" hidden>
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M3 6h18" />
+                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                        <path d="M10 11v6" />
+                        <path d="M14 11v6" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="byok-status" data-byok-status="openrouter">Not saved</div>
+                </div>
+                <div class="byok-provider" data-byok-provider="gemini">
+                  <div class="byok-provider-header">
+                    <span class="provider-logo gemini-logo" aria-hidden="true"><img src="./assets/gemini-color.svg" alt="" /></span>
+                    <div class="setting-copy">
+                      <div class="setting-title">Gemini</div>
+                      <div class="setting-detail">Use Gemini models with your own API key.</div>
+                    </div>
+                  </div>
+                  <div class="byok-key-row">
+                    <input class="byok-key-input" type="password" data-byok-key="gemini" placeholder="Gemini API key" autocomplete="off" spellcheck="false" />
+                    <button class="icon-button byok-remove-button" type="button" data-byok-remove="gemini" aria-label="Remove Gemini key" hidden>
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M3 6h18" />
+                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                        <path d="M10 11v6" />
+                        <path d="M14 11v6" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="byok-status" data-byok-status="gemini">Not saved</div>
+                </div>
+                <div class="byok-provider" data-byok-provider="xai">
+                  <div class="byok-provider-header">
+                    <span class="provider-logo xai-logo" aria-hidden="true"><img src="./assets/xai.png" alt="" /></span>
+                    <div class="setting-copy">
+                      <div class="setting-title">xAI</div>
+                      <div class="setting-detail">Use Grok models with your own xAI key.</div>
+                    </div>
+                  </div>
+                  <div class="byok-key-row">
+                    <input class="byok-key-input" type="password" data-byok-key="xai" placeholder="xAI API key" autocomplete="off" spellcheck="false" />
+                    <button class="icon-button byok-remove-button" type="button" data-byok-remove="xai" aria-label="Remove xAI key" hidden>
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M3 6h18" />
+                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                        <path d="M10 11v6" />
+                        <path d="M14 11v6" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="byok-status" data-byok-status="xai">Not saved</div>
+                </div>
+                <div class="byok-provider" data-byok-provider="groq">
+                  <div class="byok-provider-header">
+                    <span class="provider-logo groq-logo" aria-hidden="true"><img src="./assets/groq.png" alt="" /></span>
+                    <div class="setting-copy">
+                      <div class="setting-title">Groq</div>
+                      <div class="setting-detail">Use Groq voice transcription models with your own API key.</div>
+                    </div>
+                  </div>
+                  <div class="byok-key-row">
+                    <input class="byok-key-input" type="password" data-byok-key="groq" placeholder="Groq API key" autocomplete="off" spellcheck="false" />
+                    <button class="icon-button byok-remove-button" type="button" data-byok-remove="groq" aria-label="Remove Groq key" hidden>
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M3 6h18" />
+                        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                        <path d="M10 11v6" />
+                        <path d="M14 11v6" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div class="byok-status" data-byok-status="groq">Not saved</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </section>
+    </main>
+
+    <div class="popover-dismiss-layer" data-menu-dismiss hidden></div>
+    <!-- Preserved New dropdown menu:
+    <div class="sidebar-menu new-menu" data-new-menu role="menu" hidden>
+      <button class="sidebar-menu-option" type="button" role="menuitem" data-new-menu-action="chat">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+        </svg>
+        <span>New chat</span>
+        <kbd data-shortcut-menu-label="newChat">⌃A</kbd>
+      </button>
+    </div>
+    -->
+    <div class="sidebar-menu chat-action-menu" data-chat-action-menu role="menu" hidden>
+      <button class="sidebar-menu-option" type="button" role="menuitem" data-chat-action="pin">
+        <span class="sidebar-menu-option-icon" data-lucide-icon="pin" aria-hidden="true"></span>
+        <span data-chat-pin-label>Pin chat</span>
+      </button>
+      <button class="sidebar-menu-option" type="button" role="menuitem" data-chat-action="rename">
+        <span class="sidebar-menu-option-icon" data-lucide-icon="pencil" aria-hidden="true"></span>
+        <span>Rename chat</span>
+      </button>
+      <button class="sidebar-menu-option danger-menu-option" type="button" role="menuitem" data-chat-action="delete">
+        <span class="sidebar-menu-option-icon" data-lucide-icon="trash2" aria-hidden="true"></span>
+        <span>Delete chat</span>
+      </button>
+    </div>
+    <div class="modal-backdrop" data-memory-modal hidden>
+      <div class="memory-modal" role="dialog" aria-modal="true" aria-labelledby="memory-modal-title">
+        <div class="modal-title" id="memory-modal-title" data-memory-modal-title>Add memory</div>
+        <p class="modal-detail" data-memory-modal-detail>Save a fact OpenArgos should remember across sessions.</p>
+        <textarea data-memory-input rows="4" placeholder="Remember that..."></textarea>
+        <div class="memory-actions">
+          <button class="plain-button" data-memory-cancel>Cancel</button>
+          <button class="secondary-button" data-memory-save>Save</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-backdrop" data-chat-rename-modal hidden>
+      <form class="memory-modal chat-rename-modal" role="dialog" aria-modal="true" aria-labelledby="chat-rename-title" data-chat-rename-form>
+        <div class="modal-title" id="chat-rename-title">Rename chat</div>
+        <p class="modal-detail" data-chat-rename-detail>Update the title shown in the Chats sidebar.</p>
+        <input class="modal-text-input" type="text" maxlength="72" data-chat-rename-input autocomplete="off" spellcheck="false" />
+        <div class="memory-actions">
+          <button class="plain-button" type="button" data-chat-rename-cancel>Cancel</button>
+          <button class="secondary-button" type="submit" data-chat-rename-save>Save</button>
+        </div>
+      </form>
+    </div>
+    <div class="modal-backdrop" data-chat-delete-modal hidden>
+      <form class="memory-modal chat-delete-modal" role="dialog" aria-modal="true" aria-labelledby="chat-delete-title" data-chat-delete-form>
+        <div class="modal-title" id="chat-delete-title">Delete chat</div>
+        <p class="modal-detail" data-chat-delete-detail>Delete this chat from your Chats list?</p>
+        <div class="memory-actions">
+          <button class="plain-button" type="button" data-chat-delete-cancel>Cancel</button>
+          <button class="danger-button" type="submit" data-chat-delete-confirm>Delete</button>
+        </div>
+      </form>
+    </div>
+
+    <!--
+    <div class="modal-backdrop" data-inbox-response-modal hidden>
+      <form class="memory-modal inbox-response-modal" role="dialog" aria-modal="true" aria-labelledby="inbox-response-title" data-inbox-response-form>
+        <div class="modal-title" id="inbox-response-title" data-inbox-response-title>Add details</div>
+        <p class="modal-detail" data-inbox-response-detail>Add context, notes, or files for OpenArgos to turn into a response.</p>
+        <textarea data-inbox-details rows="5" placeholder="Add details for OpenArgos..."></textarea>
+        <div class="inbox-attached-files">
+          <div class="inbox-attached-title">Files</div>
+          <button class="inbox-attachment-button" type="button" data-inbox-attachment-button>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 1 1-2.83-2.83l8.49-8.48" />
+            </svg>
+            <span>Add files</span>
+          </button>
+          <input type="file" data-inbox-attachment-input multiple accept=".pdf,.doc,.docx,.rtf,.odt,.xls,.xlsx,.csv,.tsv,.ods,.numbers,image/*" hidden />
+          <div class="inbox-attachment-list" data-inbox-attachment-list hidden></div>
+        </div>
+        <div class="memory-actions">
+          <button class="plain-button" type="button" data-inbox-response-cancel>Cancel</button>
+          <button class="secondary-button" type="submit" data-inbox-response-submit>Generate draft</button>
+        </div>
+      </form>
+    </div>
+    -->
+
+    <div class="modal-backdrop" data-profile-modal hidden>
+      <form class="memory-modal profile-modal" role="dialog" aria-modal="true" aria-labelledby="profile-modal-title" data-profile-form>
+        <div class="modal-title" id="profile-modal-title">Edit profile</div>
+        <p class="modal-detail">Update your OpenArgos profile.</p>
+        <div class="profile-photo-row">
+          <div class="profile-photo-preview" data-profile-avatar-preview>A</div>
+          <div class="profile-photo-actions">
+            <button class="secondary-button" type="button" data-profile-avatar-button>Change photo</button>
+            <div class="profile-photo-note">PNG, JPG, or WebP.</div>
+          </div>
+          <input type="file" accept="image/png,image/jpeg,image/webp" data-profile-avatar-input hidden />
+        </div>
+        <input class="modal-text-input modal-inline-input" type="text" data-profile-name placeholder="Name" autocomplete="name" />
+        <div class="modal-field-error" data-profile-error hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
+          <span></span>
+        </div>
+        <div class="memory-actions">
+          <button class="plain-button" type="button" data-profile-cancel>Cancel</button>
+          <button class="secondary-button" type="submit" data-profile-save>Save</button>
+        </div>
+      </form>
+    </div>
+
+    <script src="../shared/model-catalog.js"></script>
+    <script src="./renderer.js"></script>
+  </body>
+</html>
