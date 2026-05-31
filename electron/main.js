@@ -87,15 +87,15 @@ const defaultShortcutSettings = {
 const computerUseStopAccelerators = ["Command+."];
 const defaultComputerUseModelId = "gpt-5.5";
 const computerUseMaxSteps = 28;
-const computerUseWaitMs = 220;
+const computerUseWaitMs = 120;
 const computerUseFastMode = true;
 const computerUseRequestRetries = 2;
 const computerUseRequestTimeoutMs = 18000;
-const computerUseScreenshotMaxWidth = 1000;
-const computerUseScreenshotJpegQuality = 68;
-const computerUseOutputTokens = 650;
-const computerUseReasoningEffort = "low";
-const computerUseImageDetail = "high";
+const computerUseScreenshotMaxWidth = 900;
+const computerUseScreenshotJpegQuality = 62;
+const computerUseOutputTokens = 520;
+const computerUseReasoningEffort = "minimal";
+const computerUseImageDetail = "low";
 const computerUseRepeatedActionLimit = 3;
 const computerUseNoProgressActionLimit = 4;
 const computerUseMaxActions = 48;
@@ -106,7 +106,7 @@ const computerUseBrowserPartition = "persist:openargos-computer-browser";
 const computerUseBrowserViewport = { width: 1280, height: 900 };
 const computerUseActionMicroDelayMinMs = 5;
 const computerUseActionMicroDelayMaxMs = 15;
-const computerUseLocalVerifyWaitMs = 85;
+const computerUseLocalVerifyWaitMs = 45;
 const computerUseLocalRetryLimit = 1;
 const computerUseDevToolsPorts = [9222, 9223, 9224, 9333];
 const computerUseNativeAccessibilityMaxTextLength = 9000;
@@ -1267,6 +1267,70 @@ function resolveMediaPlaybackFollowupTask(question, recentMessages = []) {
     reference.artist ? `by ${reference.artist}` : "",
     service ? `on ${service}` : ""
   ].filter(Boolean).join(" ");
+}
+
+async function runAppleScriptOrThrow(script, { timeout = 1800 } = {}) {
+  const { stdout } = await runExecFile("osascript", ["-e", script], {
+    timeout,
+    maxBuffer: 1024 * 1024
+  });
+  return stdout.trim();
+}
+
+function spotifyControlCommandFromTask(task = "") {
+  const commandText = computerUseCommandText(task);
+  const service = mediaPlaybackServiceFromText(task);
+  if (service && service !== "Spotify") return "";
+  if (/\b(?:next|skip)(?:\s+(?:song|track))?\b/.test(commandText)) return "next track";
+  if (/\b(?:previous|prev|back|last)(?:\s+(?:song|track))?\b/.test(commandText)) return "previous track";
+  if (/^(?:pause|stop)\b/.test(commandText) || /\b(?:pause|stop)\s+(?:spotify|music|song|track)\b/.test(commandText)) return "pause";
+  if (/^(?:resume|continue)\b/.test(commandText)) return "play";
+  if (/^(?:play|start)\s+(?:spotify|music|song|track)\s*$/.test(commandText)) return "play";
+  return "";
+}
+
+function spotifyPlaybackIntentFromTask(task = "") {
+  const parsed = parseMediaPlaybackUserText(task);
+  if (!parsed?.title) return null;
+  const service = parsed.service || mediaPlaybackServiceFromText(task);
+  if (service && service !== "Spotify") return null;
+  const commandText = computerUseCommandText(task);
+  const explicitSpotify = service === "Spotify" || /\bspotify\b/i.test(task);
+  const clearMediaTarget = explicitSpotify ||
+    Boolean(parsed.artist) ||
+    /\b(?:song|track|album|playlist|music)\b/i.test(commandText);
+  if (!clearMediaTarget) return null;
+  const query = [parsed.title, parsed.artist].filter(Boolean).join(" ").trim();
+  if (!query) return null;
+  return {
+    title: parsed.title,
+    artist: parsed.artist,
+    query
+  };
+}
+
+async function runSpotifyControlCommand(command = "") {
+  const allowed = new Set(["play", "pause", "playpause", "next track", "previous track"]);
+  if (!allowed.has(command)) throw new Error(`Unsupported Spotify command: ${command}`);
+  await runAppleScriptOrThrow(`tell application "Spotify" to ${command}`, { timeout: 2200 });
+}
+
+async function runSpotifySearchAndPlay(intent = {}) {
+  const query = String(intent.query || "").trim();
+  if (!query) throw new Error("Missing Spotify search query.");
+  await runExecFile("/usr/bin/open", [`spotify:search:${encodeURIComponent(query)}`], {
+    timeout: 1800,
+    maxBuffer: 1024 * 1024
+  });
+  await sleep(850);
+  await runAppleScriptOrThrow(`
+    tell application "Spotify" to activate
+    delay 0.25
+    tell application "System Events"
+      key code 36
+    end tell
+  `, { timeout: 2600 });
+  await sleep(250);
 }
 
 function resolveComputerUseTask(question, recentMessages = [], { taskState = null } = {}) {
@@ -5176,7 +5240,16 @@ function summarizeComputerAction(action, frontmost = {}, context = {}) {
   const type = normalizeComputerActionType(action);
   const appName = frontmost.activeApp || "current app";
   const task = String(context.task || "").toLowerCase();
-  const hint = cleanComputerReasoningHint(context.reasoningStatus);
+  const rawHint = cleanComputerReasoningHint(context.reasoningStatus);
+  const normalizedHint = normalizeComputerIntentText(rawHint);
+  const normalizedTask = normalizeComputerIntentText(context.task || "");
+  const hint = normalizedHint && normalizedTask && (
+    normalizedHint === normalizedTask ||
+    normalizedTask.includes(normalizedHint) ||
+    normalizedHint.includes(normalizedTask)
+  )
+    ? ""
+    : rawHint;
   const target = formatComputerTargetForStep(context.target);
 
   if (type === "click" || type === "double_click") {
@@ -5457,7 +5530,9 @@ function addSyntheticComputerUseStep({ approval, computerUseSteps, sendStream, l
     approvalId: approval.approvalId || null,
     label,
     status: "succeeded",
-    app: surface === "background_browser" ? "OpenArgos Background Browser" : null,
+    app: surface === "background_browser"
+      ? "OpenArgos Background Browser"
+      : detail?.app || null,
     windowTitle: null,
     surface,
     url: detail?.url || null,
@@ -5480,7 +5555,79 @@ function addSyntheticComputerUseStep({ approval, computerUseSteps, sendStream, l
   return entry;
 }
 
+async function maybeRunSpotifyComputerUseFastPath({ approval, sendStream, sendStatus, computerUseSteps }) {
+  const task = String(approval?.task || "").trim();
+  const controlCommand = spotifyControlCommandFromTask(task);
+  if (controlCommand) {
+    sendStatus("Controlling Spotify");
+    await runSpotifyControlCommand(controlCommand);
+    const controlLabel = controlCommand === "next track"
+      ? "Skipped to the next Spotify track"
+      : controlCommand === "previous track"
+        ? "Went to the previous Spotify track"
+        : controlCommand === "pause"
+          ? "Paused Spotify"
+          : "Started Spotify playback";
+    addSyntheticComputerUseStep({
+      approval,
+      computerUseSteps,
+      sendStream,
+      label: controlLabel,
+      surface: "live_mac",
+      detail: { app: "Spotify", target: controlCommand }
+    });
+    return {
+      completed: true,
+      finalText: `${controlLabel}.`,
+      savedDownloads: []
+    };
+  }
+
+  const playbackIntent = spotifyPlaybackIntentFromTask(task);
+  if (!playbackIntent) return null;
+  sendStatus("Opening Spotify");
+  addSyntheticComputerUseStep({
+    approval,
+    computerUseSteps,
+    sendStream,
+    label: `Opened Spotify search for ${playbackIntent.query}`,
+    surface: "live_mac",
+    detail: { app: "Spotify", target: playbackIntent.query }
+  });
+  await runSpotifySearchAndPlay(playbackIntent);
+  sendStatus("Started Spotify");
+  addSyntheticComputerUseStep({
+    approval,
+    computerUseSteps,
+    sendStream,
+    label: `Started Spotify playback for ${playbackIntent.query}`,
+    surface: "live_mac",
+    detail: { app: "Spotify", target: playbackIntent.query }
+  });
+  return {
+    completed: true,
+    finalText: `Playing "${playbackIntent.title}"${playbackIntent.artist ? ` by ${playbackIntent.artist}` : ""} on Spotify.`,
+    savedDownloads: []
+  };
+}
+
 async function maybeRunComputerUseFastPath({ approval, adapter, sendStream, sendStatus, computerUseSteps }) {
+  const spotifyFastPath = await maybeRunSpotifyComputerUseFastPath({
+    approval,
+    sendStream,
+    sendStatus,
+    computerUseSteps
+  }).catch((error) => {
+    writeAmbientLog("computer_use_spotify_fast_path_failed", {
+      requestId: approval?.requestId || null,
+      approvalId: approval?.approvalId || null,
+      sessionId: approval?.sessionId || null,
+      error: error?.message || String(error)
+    });
+    return null;
+  });
+  if (spotifyFastPath?.completed) return spotifyFastPath;
+
   if (!adapter?.background || adapter.kind !== "browser") return null;
 
   const imageSubject = extractPublicImageDownloadSubject(approval.task);

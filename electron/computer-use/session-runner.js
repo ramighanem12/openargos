@@ -339,7 +339,10 @@ function createComputerUseSessionRunner(deps = {}) {
       for (let loop = 0; loop < computerUseMaxSteps; loop += 1) {
       assertComputerUseNotCancelled(runControl);
       const reasoningStatus = extractComputerReasoningStatus(response);
-      if (reasoningStatus) sendStatus(reasoningStatus);
+      const reasoningDisplayStatus = typeof computerUseExecutor.reasoningStatusForDisplay === "function"
+        ? computerUseExecutor.reasoningStatusForDisplay(reasoningStatus, approval.task)
+        : reasoningStatus;
+      if (reasoningDisplayStatus) sendStatus(reasoningDisplayStatus);
       const calls = extractComputerCalls(response);
       if (!calls.length) {
         const proposedFinalText = computerUseExecutor.finalTextFromResponse(response);

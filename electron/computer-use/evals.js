@@ -118,6 +118,11 @@ function createComputerUseEvalSuite({
     if (plan.kind !== "native" || plan.background) throw new Error(`Expected live Mac, got ${plan.kind}`);
   });
 
+  add("surface router sends Spotify playback to live Mac", () => {
+    const plan = surfaceRouter.resolveAdapterPlan("Play Happy by Pharrell on Spotify.");
+    if (plan.kind !== "native" || plan.background) throw new Error(`Expected live Mac, got ${plan.kind}`);
+  });
+
   add("executor retries chat-mode no-op failures", () => {
     if (!executor?.shouldRetryNoOp) return;
     const decision = executor.shouldRetryNoOp({
@@ -126,6 +131,15 @@ function createComputerUseEvalSuite({
       task: "Download a photo of Example Public Figure"
     });
     if (!decision.retry || !decision.stoppedWithoutAction) throw new Error("Expected no-op retry decision.");
+  });
+
+  add("executor hides reasoning status when it only repeats the task", () => {
+    if (!executor?.reasoningStatusForDisplay) return;
+    const status = executor.reasoningStatusForDisplay(
+      "Open DoorDash and tell me my last three orders.",
+      "Open DoorDash and tell me my last three orders."
+    );
+    if (status) throw new Error(`Expected repeated task status to be hidden, got ${status}`);
   });
 
   add("action verifier batches address-bar navigation safely", () => {

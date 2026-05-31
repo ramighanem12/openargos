@@ -41,6 +41,27 @@ function createComputerUseExecutor({
     return shorten(text, 120);
   }
 
+  function reasoningStatusForDisplay(text = "", task = "") {
+    const cleaned = String(text || "")
+      .replace(/\s+/g, " ")
+      .replace(/^I(?:'m| am|’m)?\s+(?:going to|about to|now)?\s*/i, "")
+      .replace(/^I(?:'ll| will|’ll)\s*/i, "")
+      .replace(/^Next,?\s*/i, "")
+      .trim()
+      .replace(/[.。]+$/, "");
+    if (!cleaned) return "";
+    const normalized = normalizeIntent(cleaned);
+    const normalizedTask = normalizeIntent(task);
+    if (normalizedTask && (
+      normalized === normalizedTask ||
+      normalizedTask.includes(normalized) ||
+      normalized.includes(normalizedTask)
+    )) {
+      return "";
+    }
+    return shorten(cleaned, 72);
+  }
+
   function approvalText() {
     return [
       "Okay, I’ll use Computer Use.",
@@ -74,6 +95,7 @@ function createComputerUseExecutor({
   return {
     extractComputerCalls,
     extractReasoningStatus,
+    reasoningStatusForDisplay,
     approvalText,
     finalTextFromResponse,
     finalTextLooksLikeModeFailure,
