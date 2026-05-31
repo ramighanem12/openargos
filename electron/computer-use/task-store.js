@@ -120,22 +120,24 @@ function createComputerUseTaskStore({
 
   function recordAction(payload = {}) {
     const now = Date.now();
-    const doc = {
+    const docs = (Array.isArray(payload) ? payload : [payload]).filter(Boolean).map((item) => ({
       _id: localDocId("cua_action"),
       createdAt: now,
-      ...payload
-    };
+      ...item
+    }));
+    if (!docs.length) return Array.isArray(payload) ? [] : null;
     updateLocalStore((store) => ({
       ...store,
-      computerUseActions: [doc, ...(Array.isArray(store.computerUseActions) ? store.computerUseActions : [])].slice(0, 1000)
+      computerUseActions: [...docs, ...(Array.isArray(store.computerUseActions) ? store.computerUseActions : [])].slice(0, 1000)
     }));
-    return doc;
+    return Array.isArray(payload) ? docs : docs[0];
   }
 
   function appendTraceEvent(sessionId = "", event = {}) {
     const id = String(sessionId || "").trim();
     if (!id) return null;
-    const traceEvent = cleanTraceEvent(event);
+    const traceEvents = (Array.isArray(event) ? event : [event]).filter(Boolean).map(cleanTraceEvent);
+    if (!traceEvents.length) return null;
     let result = null;
     updateLocalStore((store) => {
       const sessions = (Array.isArray(store.computerUseSessions) ? store.computerUseSessions : []).map((session) => {
@@ -144,7 +146,7 @@ function createComputerUseTaskStore({
         const trace = metadata.executionTrace && typeof metadata.executionTrace === "object"
           ? metadata.executionTrace
           : { version: 1, events: [] };
-        const events = [...(Array.isArray(trace.events) ? trace.events : []), traceEvent].slice(-maxTraceEvents);
+        const events = [...(Array.isArray(trace.events) ? trace.events : []), ...traceEvents].slice(-maxTraceEvents);
         const executionTrace = {
           version: 1,
           events,

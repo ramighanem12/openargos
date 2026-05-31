@@ -84,13 +84,34 @@ function createComputerUseSessionRunner(deps = {}) {
     sendStream("status", { text });
     updateComputerUseOverlayStatus(text);
   };
+  let pendingTraceEvents = [];
+  let traceFlushTimer = null;
+  const flushTraceEvents = () => {
+    if (traceFlushTimer) {
+      clearTimeout(traceFlushTimer);
+      traceFlushTimer = null;
+    }
+    if (!pendingTraceEvents.length || typeof localAppendComputerUseTraceEvent !== "function") return null;
+    const events = pendingTraceEvents;
+    pendingTraceEvents = [];
+    return localAppendComputerUseTraceEvent(approval.sessionId, events);
+  };
   const appendTrace = (type, payload = {}) => {
-    if (typeof localAppendComputerUseTraceEvent !== "function") return null;
-    return localAppendComputerUseTraceEvent(approval.sessionId, {
+    pendingTraceEvents.push({
       type,
       at: new Date().toISOString(),
       ...payload
     });
+    if (!traceFlushTimer) {
+      traceFlushTimer = setTimeout(() => {
+        try {
+          flushTraceEvents();
+        } catch {
+          // Diagnostics must not block Computer Use.
+        }
+      }, 220);
+    }
+    return null;
   };
 
   const computerUsePolicy = getComputerUseRuntimePolicy();
@@ -149,6 +170,76 @@ function createComputerUseSessionRunner(deps = {}) {
   let meaningfulActionTotal = 0;
   let noOpRetryUsed = false;
   const actionQueue = createComputerUseActionQueue({ adapter, runControl });
+  let pendingUserActionSteps = null;
+  let userActionStepsTimer = null;
+  const cloneStepsForUi = (steps) => (Array.isArray(steps) ? steps : []).map((stepEntry) => ({ ...stepEntry }));
+  const flushUserActionStepsUpdate = async (steps = computerUseSteps) => {
+    if (userActionStepsTimer) {
+      clearTimeout(userActionStepsTimer);
+      userActionStepsTimer = null;
+    }
+    pendingUserActionSteps = null;
+    await updateComputerUseUserActionSteps(approval, cloneStepsForUi(steps));
+  };
+  const scheduleUserActionStepsUpdate = (steps = computerUseSteps) => {
+    pendingUserActionSteps = cloneStepsForUi(steps);
+    if (userActionStepsTimer) return;
+    userActionStepsTimer = setTimeout(() => {
+      const next = pendingUserActionSteps;
+      userActionStepsTimer = null;
+      pendingUserActionSteps = null;
+      void updateComputerUseUserActionSteps(approval, next).catch(() => {});
+    }, 140);
+  };
+  let pendingTaskStateUpdate = null;
+  let taskStateFlushTimer = null;
+  const flushTaskStateUpdate = () => {
+    if (taskStateFlushTimer) {
+      clearTimeout(taskStateFlushTimer);
+      taskStateFlushTimer = null;
+    }
+    if (!pendingTaskStateUpdate) return null;
+    const { stepEntry, status } = pendingTaskStateUpdate;
+    pendingTaskStateUpdate = null;
+    return localUpdateComputerUseTaskState(approval, stepEntry, status);
+  };
+  const scheduleTaskStateUpdate = (stepEntry, status = "running") => {
+    pendingTaskStateUpdate = { stepEntry: { ...stepEntry }, status };
+    if (!taskStateFlushTimer) {
+      taskStateFlushTimer = setTimeout(() => {
+        try {
+          flushTaskStateUpdate();
+        } catch {
+          // Task-state persistence must not block Computer Use.
+        }
+      }, 220);
+    }
+  };
+  let pendingActionRecords = [];
+  let actionRecordFlushTimer = null;
+  const flushActionRecords = () => {
+    if (actionRecordFlushTimer) {
+      clearTimeout(actionRecordFlushTimer);
+      actionRecordFlushTimer = null;
+    }
+    if (!pendingActionRecords.length) return null;
+    const records = pendingActionRecords;
+    pendingActionRecords = [];
+    return localRecordComputerUseAction(records);
+  };
+  const scheduleActionRecord = (record) => {
+    if (!record) return;
+    pendingActionRecords.push(record);
+    if (!actionRecordFlushTimer) {
+      actionRecordFlushTimer = setTimeout(() => {
+        try {
+          flushActionRecords();
+        } catch {
+          // Diagnostics must not block Computer Use.
+        }
+      }, 220);
+    }
+  };
   setAmbientComputerPassthrough(computerUseAmbientPassthrough);
   showComputerUseOverlay({ approval, adapter, status: "Starting" });
 
@@ -432,8 +523,8 @@ function createComputerUseSessionRunner(deps = {}) {
             stepEntry.errorMessage = blockedActionReason;
             sendStatus("Skipping sign-in");
             sendStream("computer_action", { action: stepEntry });
-            void updateComputerUseUserActionSteps(approval, computerUseSteps);
-            localUpdateComputerUseTaskState(approval, stepEntry, "running");
+            scheduleUserActionStepsUpdate(computerUseSteps);
+            scheduleTaskStateUpdate(stepEntry, "running");
             writeAmbientLog("computer_use_background_action_blocked", {
               requestId: approval.requestId,
               approvalId: approval.approvalId,
@@ -452,7 +543,7 @@ function createComputerUseSessionRunner(deps = {}) {
               url: stepEntry.url,
               errorMessage: blockedActionReason
             });
-            localRecordComputerUseAction({
+            scheduleActionRecord({
               sessionId: approval.sessionId,
               step,
               callId: call.call_id || call.id,
@@ -476,8 +567,8 @@ function createComputerUseSessionRunner(deps = {}) {
           }
           sendStatus(computerActionStatus(action, { background: Boolean(adapter.background) }));
           sendStream("computer_action", { action: stepEntry });
-          void updateComputerUseUserActionSteps(approval, computerUseSteps);
-          localUpdateComputerUseTaskState(approval, stepEntry, criticalRisk ? "waiting_approval" : "running");
+          scheduleUserActionStepsUpdate(computerUseSteps);
+          scheduleTaskStateUpdate(stepEntry, criticalRisk ? "waiting_approval" : "running");
           writeAmbientLog("computer_use_step_started", {
             requestId: approval.requestId,
             approvalId: approval.approvalId,
@@ -497,7 +588,7 @@ function createComputerUseSessionRunner(deps = {}) {
             target: stepEntry.target,
             url: stepEntry.url
           });
-          localRecordComputerUseAction({
+          scheduleActionRecord({
             sessionId: approval.sessionId,
             step,
             callId: call.call_id || call.id,
@@ -544,8 +635,8 @@ function createComputerUseSessionRunner(deps = {}) {
                 stepEntry.status = "cancelled";
                 stepEntry.errorMessage = "User cancelled before the critical action.";
                 sendStream("computer_action", { action: stepEntry });
-                void updateComputerUseUserActionSteps(approval, computerUseSteps);
-                localUpdateComputerUseTaskState(approval, stepEntry, "cancelled");
+                scheduleUserActionStepsUpdate(computerUseSteps);
+                scheduleTaskStateUpdate(stepEntry, "cancelled");
                 appendTrace("critical_approval_cancelled", {
                   step,
                   status: "cancelled",
@@ -561,12 +652,12 @@ function createComputerUseSessionRunner(deps = {}) {
                 stepEntry.status = "denied";
                 stepEntry.errorMessage = "User did not allow this critical action.";
                 sendStream("computer_action", { action: stepEntry });
-                void updateComputerUseUserActionSteps(approval, computerUseSteps);
-                localUpdateComputerUseTaskState(approval, stepEntry, "running");
+                scheduleUserActionStepsUpdate(computerUseSteps);
+                scheduleTaskStateUpdate(stepEntry, "running");
                 if (pendingSafetyChecks.length && !safetyApprovalHandled) {
                   safetyApprovalHandled = true;
                 }
-                localRecordComputerUseAction({
+                scheduleActionRecord({
                   sessionId: approval.sessionId,
                   step,
                   callId: call.call_id || call.id,
@@ -612,8 +703,8 @@ function createComputerUseSessionRunner(deps = {}) {
               stepEntry.label = stepEntry.label.replace(/^Needs approval:\s*/i, "");
               stepEntry.approvedCriticalAction = true;
               sendStream("computer_action", { action: stepEntry });
-              void updateComputerUseUserActionSteps(approval, computerUseSteps);
-              localUpdateComputerUseTaskState(approval, stepEntry, "running");
+              scheduleUserActionStepsUpdate(computerUseSteps);
+              scheduleTaskStateUpdate(stepEntry, "running");
               writeAmbientLog("computer_use_critical_action_approved", {
                 requestId: approval.requestId,
                 approvalId: approval.approvalId,
@@ -651,8 +742,8 @@ function createComputerUseSessionRunner(deps = {}) {
             stepEntry.verificationStrength = adapter.verificationStrength || "unknown";
             stepEntry.status = "succeeded";
             sendStream("computer_action", { action: stepEntry });
-            void updateComputerUseUserActionSteps(approval, computerUseSteps);
-            localUpdateComputerUseTaskState(approval, stepEntry, "running");
+            scheduleUserActionStepsUpdate(computerUseSteps);
+            scheduleTaskStateUpdate(stepEntry, "running");
             writeAmbientLog("computer_use_step_succeeded", {
               requestId: approval.requestId,
               approvalId: approval.approvalId,
@@ -677,7 +768,7 @@ function createComputerUseSessionRunner(deps = {}) {
               retried: Boolean(executionResult?.retried),
               durationMs: Date.now() - actionStartedAt
             });
-            localRecordComputerUseAction({
+            scheduleActionRecord({
               sessionId: approval.sessionId,
               step,
               callId: call.call_id || call.id,
@@ -700,8 +791,8 @@ function createComputerUseSessionRunner(deps = {}) {
               ? (stepEntry.errorMessage || "Computer Use stopped.")
               : actionError?.message || String(actionError);
             sendStream("computer_action", { action: stepEntry });
-            void updateComputerUseUserActionSteps(approval, computerUseSteps);
-            localUpdateComputerUseTaskState(approval, stepEntry, actionCancelled ? "cancelled" : "failed");
+            scheduleUserActionStepsUpdate(computerUseSteps);
+            scheduleTaskStateUpdate(stepEntry, actionCancelled ? "cancelled" : "failed");
             writeAmbientLog("computer_use_step_failed", {
               requestId: approval.requestId,
               approvalId: approval.approvalId,
@@ -721,7 +812,7 @@ function createComputerUseSessionRunner(deps = {}) {
               url: stepEntry.url,
               errorMessage: stepEntry.errorMessage
             });
-            localRecordComputerUseAction({
+            scheduleActionRecord({
               sessionId: approval.sessionId,
               step,
               callId: call.call_id || call.id,
@@ -893,7 +984,10 @@ function createComputerUseSessionRunner(deps = {}) {
       label: finalText,
       durationMs: Date.now() - startedAt
     });
-    void updateComputerUseUserActionSteps(approval, computerUseSteps);
+    await flushUserActionStepsUpdate(computerUseSteps);
+    flushTaskStateUpdate();
+    flushActionRecords();
+    flushTraceEvents();
     localUpdateComputerUseSession({
       sessionId: approval.sessionId,
       status: "succeeded",
@@ -955,9 +1049,12 @@ function createComputerUseSessionRunner(deps = {}) {
         label: "Computer Use stopped",
         durationMs: Date.now() - startedAt
       });
-      void updateComputerUseUserActionSteps(approval, computerUseSteps.map((item) => (
+      await flushUserActionStepsUpdate(computerUseSteps.map((item) => (
         item.status === "running" ? { ...item, status: "cancelled" } : item
       )));
+      flushTaskStateUpdate();
+      flushActionRecords();
+      flushTraceEvents();
       void logModelUsageEvent({
         provider: computerUseProvider,
         model: computerUseRuntimeModel,
@@ -1004,6 +1101,10 @@ function createComputerUseSessionRunner(deps = {}) {
       errorMessage: errorText,
       durationMs: Date.now() - startedAt
     });
+    await flushUserActionStepsUpdate(computerUseSteps);
+    flushTaskStateUpdate();
+    flushActionRecords();
+    flushTraceEvents();
     localUpdateComputerUseSession({
       sessionId: approval.sessionId,
       status: "failed",
@@ -1036,6 +1137,10 @@ function createComputerUseSessionRunner(deps = {}) {
     });
     throw error;
   } finally {
+    if (userActionStepsTimer) clearTimeout(userActionStepsTimer);
+    if (taskStateFlushTimer) clearTimeout(taskStateFlushTimer);
+    if (actionRecordFlushTimer) clearTimeout(actionRecordFlushTimer);
+    if (traceFlushTimer) clearTimeout(traceFlushTimer);
     actionQueue.clear();
     setAmbientComputerPassthrough(false);
     hideComputerUseOverlay();

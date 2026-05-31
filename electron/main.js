@@ -4954,7 +4954,8 @@ function computerUseSystemInstructions(adapter = {}) {
       ]
     : [
         "Execution surface: you are operating the user's live Mac UI through screenshots and Accessibility/input events. This may require foreground control.",
-        "Do not claim native app control can run in the background. Use direct, fast, visible UI actions and stop if a required app or control is unavailable."
+        "Do not claim native app control can run in the background. Use direct, fast, visible UI actions and stop if a required app or control is unavailable.",
+        "For music playback tasks, use the requested native media app directly when one is named, such as Spotify or Music. Do not go through web search or a browser first unless the native app is unavailable."
       ];
   return [
     "You are OpenArgos' macOS computer-use operator. You control the user's Mac through screenshots and UI actions executed by the OpenArgos harness.",

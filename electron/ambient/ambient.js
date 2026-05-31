@@ -93,6 +93,7 @@ let activeComputerUseActionItem = null;
 let activeComputerUseApprovalId = null;
 let pendingComputerUseGoal = "";
 const completedComputerUseApprovalIds = new Set();
+let computerUseActionLayoutFrame = 0;
 let streamingMessage = null;
 let streamingContent = null;
 let streamingMessageVisible = false;
@@ -3068,9 +3069,7 @@ function updateComputerUseCurrentStep(item, stepsInput) {
   ));
   const isSettledProblem = ["failed", "cancelled", "denied"].includes(displayStep?.status);
   const isLive = isActive && !hasFailedStep && !isSettledProblem;
-  const displayText = isLive && displayStep?.status !== "needs_approval" && item.dataset.goal
-    ? item.dataset.goal
-    : computerUseStepText(displayStep);
+  const displayText = computerUseStepText(displayStep);
 
   current.hidden = !shouldShow;
   current.classList.toggle("running", Boolean(isLive));
@@ -3386,6 +3385,7 @@ function updateActiveComputerUseAction(action) {
     return;
   }
   const currentSteps = normalizeComputerUseSteps(activeComputerUseActionItem._computerUseSteps || []);
+  const firstVisibleStep = currentSteps.length === 0;
   const next = {
     step: Number(action?.step || currentSteps.length + 1),
     label: String(action?.label || "Used computer"),
@@ -3397,9 +3397,25 @@ function updateActiveComputerUseAction(action) {
   else currentSteps.push(next);
   activeComputerUseActionItem._computerUseSteps = currentSteps;
   renderComputerUseSteps(activeComputerUseActionItem, currentSteps);
-  autoScrollToBottom = true;
-  resizeToContent({ force: true, animate: true, duration: 150 });
-  window.requestAnimationFrame(() => scrollBodyToBottom());
+  scheduleComputerUseActionLayoutUpdate({
+    resize: firstVisibleStep || activeComputerUseActionItem.classList.contains("expanded"),
+    follow: activeComputerUseActionItem.classList.contains("expanded")
+  });
+}
+
+function scheduleComputerUseActionLayoutUpdate({ resize = false, follow = false } = {}) {
+  if (computerUseActionLayoutFrame) return;
+  computerUseActionLayoutFrame = window.requestAnimationFrame(() => {
+    computerUseActionLayoutFrame = 0;
+    if (resize) {
+      Promise.resolve(resizeToContent({ force: true, animate: true, duration: 120, noShrink: true }))?.then(() => {
+        if (follow) scrollBodyToBottom({ force: true });
+        else updateScrollState();
+      });
+      return;
+    }
+    updateScrollState();
+  });
 }
 
 function stopAmbientOutputTimers() {
@@ -3413,9 +3429,11 @@ function stopAmbientOutputTimers() {
   window.cancelAnimationFrame(scrollFollowFrame);
   window.cancelAnimationFrame(streamingFollowFrame);
   window.cancelAnimationFrame(liveContentResizeFrame);
+  window.cancelAnimationFrame(computerUseActionLayoutFrame);
   scrollFollowFrame = 0;
   streamingFollowFrame = 0;
   liveContentResizeFrame = 0;
+  computerUseActionLayoutFrame = 0;
 }
 
 function appendSessionMessage(message, { current = false } = {}) {
