@@ -1167,6 +1167,12 @@ function parseMarkdown(text) {
       continue;
     }
 
+    if (list?.items?.length) {
+      const lastIndex = list.items.length - 1;
+      list.items[lastIndex] = `${list.items[lastIndex]}\n${line}`;
+      continue;
+    }
+
     list = null;
     paragraph.push(line);
   }

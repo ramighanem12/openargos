@@ -941,6 +941,26 @@ function latestComputerUseTaskFromMessages(messages = []) {
   return "";
 }
 
+function messageHasComputerUseContext(message = {}) {
+  const metadata = message?.metadata || {};
+  if (metadata.actionFamily === "computer_use") return true;
+  if (metadata.computerUseSessionId || metadata.computerUseApprovalId) return true;
+  if (metadata.actionType === "computer_use_approved") return true;
+  const text = String(message?.text || "").trim();
+  if (!text) return false;
+  if (message.role === "user") {
+    return textLooksLikeComputerUseTask(text, { requireAsk: false }) || Boolean(extractPublicImageDownloadSubject(text));
+  }
+  return /\b(saved|downloaded|opened|played|clicked|typed|selected|changed|updated|found)\b/i.test(text) &&
+    /\b(downloads|computer use|browser|screen|app|window|file|image|photo|song|spotify|youtube)\b/i.test(text);
+}
+
+function hasRecentComputerUseContext(messages = []) {
+  return (Array.isArray(messages) ? messages : [])
+    .slice(-12)
+    .some(messageHasComputerUseContext);
+}
+
 function latestImageDownloadTaskFromMessages(messages = []) {
   const rows = Array.isArray(messages) ? [...messages].reverse() : [];
   for (const message of rows) {
@@ -5839,7 +5859,7 @@ function systemPromptForAmbientAgent() {
     "When a web search tool is available and the user asks for current, live, or time-sensitive information, use it instead of saying you lack internet access.",
     "If asked what model or provider is powering you, answer from the supplied app runtime configuration.",
     "The app runtime can change between turns. Treat the current app runtime configuration as authoritative for this response, and do not call prior model/provider answers incorrect solely because an earlier assistant message used a different runtime.",
-    "If the user asks you to operate an app, website, browser, or the Mac and you are answering in normal chat instead of the Computer Use runner, do not claim you are using the computer. Do not tell the user to approve Computer Use or turn it on unless the supplied app context explicitly says it is disabled.",
+    "If the user asks you to operate an app, website, browser, or the Mac and you are answering in normal chat instead of the Computer Use runner, do not claim you are using the computer. Do not say you are in chat mode, cannot directly control the browser from here, or that the request must be routed back through Computer Use. Do not tell the user to approve Computer Use or turn it on unless the supplied app context explicitly says it is disabled.",
     "Answer directly and avoid repeating prior answers unless the user asks."
   ].join("\n");
 }
@@ -6209,12 +6229,12 @@ async function callOpenAICompatibleChat({ provider, apiKey, model, system, promp
   };
 }
 
-async function callOpenAIResponses({ apiKey, model, prompt, screenshotDataUrl, useWebSearch = false, onTextDelta, onStatus }) {
+async function callOpenAIResponses({ apiKey, model, prompt, screenshotDataUrl, useWebSearch = false, onTextDelta, onStatus, system = "" }) {
   const content = [{ type: "input_text", text: prompt }];
   if (screenshotDataUrl) content.push({ type: "input_image", image_url: screenshotDataUrl, detail: "low" });
   const body = {
     model,
-    instructions: systemPromptForAmbientAgent(),
+    instructions: system || systemPromptForAmbientAgent(),
     input: [{ role: "user", content }],
     max_output_tokens: ambientAgentMaxOutputTokens,
     stream: Boolean(onTextDelta)
@@ -6343,7 +6363,7 @@ async function callXAIWithFallback({ apiKey, model, system, prompt, screenshotDa
   throw lastError || new Error("xAI request failed.");
 }
 
-async function callAnthropicMessages({ apiKey, model, prompt, screenshotDataUrl, useWebSearch = false, onTextDelta, onStatus }) {
+async function callAnthropicMessages({ apiKey, model, prompt, screenshotDataUrl, useWebSearch = false, onTextDelta, onStatus, system = "" }) {
   const content = [{ type: "text", text: prompt }];
   const image = parseImageDataUrl(screenshotDataUrl);
   if (image) {
@@ -6352,7 +6372,7 @@ async function callAnthropicMessages({ apiKey, model, prompt, screenshotDataUrl,
   const body = {
     model,
     max_tokens: ambientAgentMaxOutputTokens,
-    system: systemPromptForAmbientAgent(),
+    system: system || systemPromptForAmbientAgent(),
     messages: [{ role: "user", content }],
     stream: Boolean(onTextDelta)
   };
@@ -6384,12 +6404,12 @@ async function callAnthropicMessages({ apiKey, model, prompt, screenshotDataUrl,
   return { text: extractAnthropicText(data), usage: data?.usage || {} };
 }
 
-async function callGeminiGenerateContent({ apiKey, model, prompt, screenshotDataUrl, useWebSearch = false }) {
+async function callGeminiGenerateContent({ apiKey, model, prompt, screenshotDataUrl, useWebSearch = false, system = "" }) {
   const parts = [{ text: prompt }];
   const image = parseImageDataUrl(screenshotDataUrl);
   if (image) parts.push({ inlineData: { mimeType: image.mimeType, data: image.base64 } });
   const body = {
-    systemInstruction: { parts: [{ text: systemPromptForAmbientAgent() }] },
+    systemInstruction: { parts: [{ text: system || systemPromptForAmbientAgent() }] },
     contents: [{ role: "user", parts }],
     generationConfig: { maxOutputTokens: ambientAgentMaxOutputTokens, temperature: 0.35 }
   };
@@ -6413,26 +6433,26 @@ async function callGeminiGenerateContent({ apiKey, model, prompt, screenshotData
   };
 }
 
-async function callAmbientModel({ policy, credential, prompt, screenshotDataUrl, intent = {}, onTextDelta, onStatus }) {
+async function callAmbientModel({ policy, credential, prompt, screenshotDataUrl, intent = {}, onTextDelta, onStatus, system = "" }) {
   if (!credential?.apiKey) {
     throw new Error(`Add a local ${providerLabelForError(policy.provider)} key in Settings > Models.`);
   }
   const useWebSearch = Boolean(intent?.useWebSearch && providerSupportsWebSearch(policy.provider));
   if (useWebSearch) onStatus?.("Searching web");
   if (policy.provider === "anthropic") {
-    return await callAnthropicMessages({ apiKey: credential.apiKey, model: policy.runtimeModel, prompt, screenshotDataUrl, useWebSearch, onTextDelta, onStatus });
+    return await callAnthropicMessages({ apiKey: credential.apiKey, model: policy.runtimeModel, prompt, screenshotDataUrl, useWebSearch, onTextDelta, onStatus, system });
   }
   if (policy.provider === "gemini") {
     if (!useWebSearch) onStatus?.("Reasoning");
-    return await callGeminiGenerateContent({ apiKey: credential.apiKey, model: policy.runtimeModel, prompt, screenshotDataUrl, useWebSearch });
+    return await callGeminiGenerateContent({ apiKey: credential.apiKey, model: policy.runtimeModel, prompt, screenshotDataUrl, useWebSearch, system });
   }
   if (policy.provider === "xai") {
-    return await callXAIWithFallback({ apiKey: credential.apiKey, model: policy.runtimeModel, prompt, screenshotDataUrl, useWebSearch, onTextDelta, onStatus });
+    return await callXAIWithFallback({ apiKey: credential.apiKey, model: policy.runtimeModel, system, prompt, screenshotDataUrl, useWebSearch, onTextDelta, onStatus });
   }
   if (policy.provider === "openrouter") {
-    return await callOpenAICompatibleChat({ provider: policy.provider, apiKey: credential.apiKey, model: policy.runtimeModel, prompt, screenshotDataUrl, useWebSearch, onTextDelta, onStatus });
+    return await callOpenAICompatibleChat({ provider: policy.provider, apiKey: credential.apiKey, model: policy.runtimeModel, system, prompt, screenshotDataUrl, useWebSearch, onTextDelta, onStatus });
   }
-  return await callOpenAIResponses({ apiKey: credential.apiKey, model: policy.runtimeModel, prompt, screenshotDataUrl, useWebSearch, onTextDelta, onStatus });
+  return await callOpenAIResponses({ apiKey: credential.apiKey, model: policy.runtimeModel, prompt, screenshotDataUrl, useWebSearch, onTextDelta, onStatus, system });
 }
 
 async function callAmbientTitleModel({ policy, credential, prompt }) {
@@ -6463,6 +6483,88 @@ function extractJsonObject(text) {
   try {
     return JSON.parse(match[0]);
   } catch {
+    return null;
+  }
+}
+
+function shouldResolveComputerUseFollowupWithModel(question, recentMessages = []) {
+  const text = String(question || "").trim();
+  if (!text || text.length > 500) return false;
+  if (rejectsComputerUseIntent(text)) return false;
+  if (textLooksLikeComputerUseTask(text)) return false;
+  if (resolveImageDownloadFollowupTask(text, recentMessages)) return false;
+  return hasRecentComputerUseContext(recentMessages);
+}
+
+function formatComputerUseRoutingMessage(message = {}) {
+  const role = message.role === "assistant"
+    ? "Assistant"
+    : message.role === "user"
+      ? "User"
+      : message?.metadata?.kind === "user_action"
+        ? "User action"
+        : "System";
+  const metadata = message.metadata || {};
+  const tags = [
+    metadata.actionFamily === "computer_use" ? "computer_use" : "",
+    metadata.actionType || ""
+  ].filter(Boolean).join(", ");
+  const suffix = tags ? ` [${tags}]` : "";
+  return `${role}${suffix}: ${truncateText(String(message.text || "").replace(/\s+/g, " ").trim(), 520)}`;
+}
+
+function buildComputerUseFollowupRoutingPrompt({ question, recentMessages }) {
+  const recent = (Array.isArray(recentMessages) ? recentMessages : [])
+    .slice(-12)
+    .map(formatComputerUseRoutingMessage)
+    .filter(Boolean)
+    .join("\n");
+  return [
+    "You are a routing resolver for a desktop assistant.",
+    "Decide whether the latest user message should continue a previous Computer Use task or should be answered as normal chat.",
+    "",
+    "Choose computer_use only when the latest user message is asking the assistant to operate the computer, browser, app, file system, media app, or continue a previous operation.",
+    "If the latest message is ambiguous but clearly refers to a previous Computer Use operation, rewrite it as one standalone imperative task.",
+    "If it is a normal question, complaint, clarification, thanks, or explanation with no requested operation, choose chat.",
+    "Do not answer the user. Do not mention approvals. Return strict JSON only.",
+    "",
+    "Schema:",
+    "{\"decision\":\"computer_use\"|\"chat\",\"task\":\"standalone task if computer_use, else empty string\",\"reason\":\"short reason\"}",
+    "",
+    `Recent conversation:\n${recent || "None"}`,
+    "",
+    `Latest user message:\n${truncateText(question, 800)}`
+  ].join("\n");
+}
+
+async function resolveComputerUseFollowupWithModel({ question, recentMessages, policy, credential, requestId }) {
+  if (!shouldResolveComputerUseFollowupWithModel(question, recentMessages)) return null;
+  if (!credential?.apiKey) return null;
+  try {
+    const result = await callAmbientModel({
+      policy,
+      credential,
+      prompt: buildComputerUseFollowupRoutingPrompt({ question, recentMessages }),
+      screenshotDataUrl: null,
+      intent: { useWebSearch: false },
+      system: "You are a strict routing classifier for a desktop assistant. Return only valid JSON that matches the requested schema."
+    });
+    const parsed = extractJsonObject(result?.text || "");
+    const decision = String(parsed?.decision || "").trim().toLowerCase();
+    const task = String(parsed?.task || "").replace(/\s+/g, " ").trim();
+    if (decision !== "computer_use" || !task) return null;
+    if (rejectsComputerUseIntent(task)) return null;
+    writeAmbientLog("computer_use_followup_resolved", {
+      requestId,
+      taskPreview: truncateText(task, 240),
+      reason: truncateText(parsed?.reason || "", 240)
+    });
+    return { task, reason: parsed?.reason || "" };
+  } catch (error) {
+    writeAmbientLog("computer_use_followup_resolver_failed", {
+      requestId,
+      ...diagnosticErrorDetails(error)
+    });
     return null;
   }
 }
@@ -9217,16 +9319,31 @@ async function handleLocalAmbientAsk(event, payload, { question, requestId, stre
     thread = localEnsureAmbientThread(String(payload.threadId || "").trim() || null, { title: "Chat" });
     const previousMessages = localListAmbientMessages(thread._id, 24);
     const normalizedPreviousMessages = previousMessages.map(normalizeAmbientMessageDoc).filter(Boolean).reverse();
+    policy = await getLocalRuntimeModelPolicy();
+    credential = resolveCredentialForPolicy(policy);
     const memorySaveIntent = detectAmbientMemorySaveIntent(question);
     const computerUseStatusQuery = !memorySaveIntent && detectComputerUseStatusQuery(question);
-    const computerUseIntent = memorySaveIntent
+    let computerUseIntent = memorySaveIntent
       ? false
       : computerUseStatusQuery
         ? false
         : detectComputerUseIntent(question, { recentMessages: normalizedPreviousMessages });
-    const computerUseTask = computerUseIntent
+    let computerUseTask = computerUseIntent
       ? resolveComputerUseTask(question, normalizedPreviousMessages)
       : "";
+    if (!computerUseIntent && !memorySaveIntent && !computerUseStatusQuery) {
+      const resolvedFollowup = await resolveComputerUseFollowupWithModel({
+        question,
+        recentMessages: normalizedPreviousMessages,
+        policy,
+        credential,
+        requestId
+      });
+      if (resolvedFollowup?.task) {
+        computerUseIntent = true;
+        computerUseTask = resolvedFollowup.task;
+      }
+    }
     const preContextComputerUseAdapterPlan = computerUseIntent
       ? resolveComputerUseAdapterPlan(computerUseTask || question, {})
       : null;
@@ -9264,8 +9381,6 @@ async function handleLocalAmbientAsk(event, payload, { question, requestId, stre
       metadata: { requestId }
     });
 
-    policy = await getLocalRuntimeModelPolicy();
-    credential = resolveCredentialForPolicy(policy);
     const computerUsePolicy = computerUseIntent ? getComputerUseRuntimePolicy() : null;
     const computerUseCredential = computerUsePolicy?.credential || null;
     const computerUseAdapterPlan = computerUseIntent
