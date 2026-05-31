@@ -21,6 +21,8 @@
     "start": "electron .",
     "build:native": "npm install --prefix native/macos-permissions",
     "eval:computer-use": "node scripts/run-computer-use-evals.js",
+    "diagnostics:computer-use": "node scripts/export-computer-use-diagnostics.js",
+    "verify:release": "bash scripts/verify-release.sh",
     "dist:mac": "bash scripts/build-mac.sh",
     "release:mac": "OPENARGOS_RELEASE_SIGN=1 OPENARGOS_NOTARIZE=1 bash scripts/build-mac.sh"
   },

@@ -93,7 +93,7 @@ Summarize what is on my screen.
 Compare the open proposal against the notes in this browser tab.
 Draft a short reply to the email I have open, but ask before sending.
 Find the latest invoice in Downloads and summarize the total.
-Download a photo of Grace Hopper and name the file grace-hopper.
+Download the logo from a public company website and name the file company-logo.
 ```
 
 Computer Use always runs through the app's approval flow. For risky actions like sending messages, deleting files, posting publicly, purchasing, checkout, billing, or security changes, OpenArgos asks again before continuing.
@@ -175,13 +175,28 @@ The release script intentionally fails if Developer ID signing or notarization c
 Before opening a PR or publishing a release:
 
 ```sh
-node --check electron/main.js
-node --check electron/preload.js
-node --check electron/renderer/renderer.js
-node --check electron/ambient/ambient.js
-node --check electron/ambient/preload.js
-npm run dist:mac
+npm run verify:release
 ```
+
+For a full local packaging check, include the app/DMG build:
+
+```sh
+OPENARGOS_VERIFY_DIST=1 npm run verify:release
+```
+
+Computer Use has a focused harness eval suite:
+
+```sh
+npm run eval:computer-use
+```
+
+If a Computer Use run fails locally, export a redacted diagnostics bundle:
+
+```sh
+npm run diagnostics:computer-use -- --out computer-use-diagnostics.json --include-actions
+```
+
+The diagnostics export excludes screenshots and provider keys, and redacts obvious key, token, password, and email patterns.
 
 Also verify that you are not committing local output or secrets:
 
