@@ -55,7 +55,7 @@ function createComputerUseEvalSuite({
     };
     const plan = planner.fallbackTurnPlan("Are you not downloading it? I asked you to download it.", [], taskState);
     if (plan.route !== "computer_use") throw new Error(`Expected computer_use, got ${plan.route}`);
-    if (!/^Continue the previous Computer Use task/i.test(plan.task)) throw new Error(`Expected generic continuation task, got ${plan.task}`);
+    if (!/^Continue Computer Use/i.test(plan.task)) throw new Error(`Expected generic continuation task, got ${plan.task}`);
     if (!plan.continuationTaskId) throw new Error("Expected continuation task id.");
   });
 
@@ -102,10 +102,58 @@ function createComputerUseEvalSuite({
     };
     const plan = planner.fallbackTurnPlan("Play Happy by Pharrell on Spotify", [], taskState);
     if (plan.route !== "computer_use") throw new Error(`Expected computer_use, got ${plan.route}`);
-    if (/Continue the previous Computer Use task/i.test(plan.task)) {
+    if (/Continue Computer Use/i.test(plan.task)) {
       throw new Error(`Expected direct task to stay direct, got ${plan.task}`);
     }
     if (!/happy/i.test(plan.task)) throw new Error(`Expected direct task text, got ${plan.task}`);
+  });
+
+  add("planner routes natural Spotify playback request", () => {
+    const plan = planner.fallbackTurnPlan("Can you play any song by AC/DC in Spotify?", [], null);
+    if (plan.route !== "computer_use") throw new Error(`Expected computer_use, got ${plan.route}`);
+    if (!/spotify/i.test(plan.task)) throw new Error(`Expected Spotify task text, got ${plan.task}`);
+  });
+
+  add("planner routes Spotify playback with conversational prefix", () => {
+    const plan = planner.fallbackTurnPlan("Hello? Play Witch's Spell by ACDC.", [], null);
+    if (plan.route !== "computer_use") throw new Error(`Expected computer_use, got ${plan.route}`);
+    if (!/witch/i.test(plan.task) || !/acdc/i.test(plan.task)) throw new Error(`Expected song task text, got ${plan.task}`);
+  });
+
+  add("planner routes explicit Spotify transport control without local stale task", () => {
+    const plan = planner.fallbackTurnPlan("play next track in spotify", [], null);
+    if (plan.route !== "computer_use") throw new Error(`Expected computer_use, got ${plan.route}`);
+    if (!/next track/i.test(plan.task)) throw new Error(`Expected transport task text, got ${plan.task}`);
+  });
+
+  add("planner resolves Spotify play-it follow-up from recent song reference", () => {
+    const messages = [
+      {
+        role: "user",
+        text: "Pharrell Williams, Happy, and Spotify.",
+        createdAt: "2026-05-31T16:36:00.000Z"
+      }
+    ];
+    const plan = planner.fallbackTurnPlan("go on Spotify and play it for me.", messages, null);
+    if (plan.route !== "computer_use") throw new Error(`Expected computer_use, got ${plan.route}`);
+    if (!/Happy/i.test(plan.task) || !/Pharrell Williams/i.test(plan.task) || !/Spotify/i.test(plan.task)) {
+      throw new Error(`Expected resolved Spotify task, got ${plan.task}`);
+    }
+  });
+
+  add("planner resolves are-you-going-to-play-it follow-up from recent song request", () => {
+    const messages = [
+      {
+        role: "user",
+        text: "Hello? Play Witch's Spell by ACDC.",
+        createdAt: "2026-05-31T16:58:16.000Z"
+      }
+    ];
+    const plan = planner.fallbackTurnPlan("Are you going to play it?", messages, null);
+    if (plan.route !== "computer_use") throw new Error(`Expected computer_use, got ${plan.route}`);
+    if (!/Witch/i.test(plan.task) || !/ACDC/i.test(plan.task)) {
+      throw new Error(`Expected resolved Spotify task, got ${plan.task}`);
+    }
   });
 
   add("surface router sends public image tasks to background browser", () => {

@@ -71,6 +71,42 @@ function createComputerUseSessionRunner(deps = {}) {
     setAmbientWindowDefaultLevel
   } = deps;
 
+  const runnerActionKeys = (action = {}) => (Array.isArray(action.keys) ? action.keys : [action.key || action.text].filter(Boolean))
+    .flatMap((key) => String(key || "").split("+"))
+    .map((key) => String(key || "").trim().toUpperCase())
+    .filter(Boolean);
+  const runnerActionIsAddressBarShortcut = (action = {}) => {
+    if (normalizeComputerActionType(action) !== "keypress") return false;
+    const keys = runnerActionKeys(action);
+    return keys.includes("L") && (keys.includes("COMMAND") || keys.includes("CONTROL") || keys.includes("CMD"));
+  };
+  const runnerActionEndsAddressBarEntry = (action = {}) => {
+    if (normalizeComputerActionType(action) !== "keypress") return false;
+    const keys = runnerActionKeys(action);
+    return keys.includes("RETURN") || keys.includes("ENTER") || keys.includes("ESCAPE");
+  };
+  const browserNavigationAttemptLooksResolved = (attempt = {}, focus = {}) => {
+    const typed = String(attempt.text || "").trim().toLowerCase();
+    if (!typed) return false;
+    const title = String(focus.activeWindowTitle || focus.browserTitle || "").toLowerCase();
+    const url = String(focus.browserUrl || "").toLowerCase();
+    const compactTyped = typed
+      .replace(/^https?:\/\//, "")
+      .replace(/^www\./, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const hostOrQuery = compactTyped.split(/[/?#\s]/)[0] || "";
+    if (hostOrQuery.length >= 4 && (title.includes(hostOrQuery) || url.includes(hostOrQuery))) return true;
+    const meaningfulWords = compactTyped
+      .split(/[^a-z0-9]+/i)
+      .filter((word) => word.length >= 4)
+      .slice(0, 3);
+    if (meaningfulWords.length >= 2 && meaningfulWords.every((word) => title.includes(word) || url.includes(word))) {
+      return true;
+    }
+    return false;
+  };
+
   async function runComputerUseSession({ event, approval, runControl = null }) {
   const sendStream = (type, data = {}) => {
     try {
@@ -167,6 +203,7 @@ function createComputerUseSessionRunner(deps = {}) {
   let consecutiveNoProgressActions = 0;
   let browserNavigationAttempt = null;
   let browserNavigationStallCount = 0;
+  let nativeBrowserAddressBarActive = false;
   let meaningfulActionTotal = 0;
   let noOpRetryUsed = false;
   const actionQueue = createComputerUseActionQueue({ adapter, runControl });
@@ -436,10 +473,19 @@ function createComputerUseSessionRunner(deps = {}) {
           if (consecutiveNoProgressActions > computerUseNoProgressActionLimit) {
             throw new Error("Computer Use made several low-progress actions in a row, so I stopped before it kept waiting or moving without a plan.");
           }
-          if (!adapter.background && normalizedActionType === "type" && /chrome|browser|safari|arc|edge|firefox/i.test(frontmost.activeApp || "")) {
+          const nativeBrowserAction = !adapter.background && /chrome|browser|safari|arc|edge|firefox/i.test(frontmost.activeApp || "");
+          if (nativeBrowserAction && runnerActionIsAddressBarShortcut(action)) {
+            nativeBrowserAddressBarActive = true;
+          } else if (nativeBrowserAction && runnerActionEndsAddressBarEntry(action)) {
+            nativeBrowserAddressBarActive = false;
+          } else if (nativeBrowserAction && ["click", "double_click", "drag", "scroll"].includes(normalizedActionType)) {
+            nativeBrowserAddressBarActive = false;
+          }
+          if (nativeBrowserAction && normalizedActionType === "type" && nativeBrowserAddressBarActive) {
             browserNavigationAttempt = {
               app: frontmost.activeApp || "",
               beforeTitle: frontmost.activeWindowTitle || "",
+              text: String(action.text || ""),
               textLength: String(action.text || "").length
             };
           }
@@ -886,10 +932,22 @@ function createComputerUseSessionRunner(deps = {}) {
         }
         if (criticalDenial) browserNavigationAttempt = null;
         if (browserNavigationAttempt) {
-          const afterTitle = String(latestFrontmost?.activeWindowTitle || "");
-          const stillNewTab = /\bnew tab\b/i.test(afterTitle);
-          const unchanged = Boolean(browserNavigationAttempt.beforeTitle) && afterTitle === browserNavigationAttempt.beforeTitle;
-          if (stillNewTab || unchanged) {
+          let afterTitle = String(latestFrontmost?.activeWindowTitle || "");
+          let stillNewTab = /\bnew tab\b/i.test(afterTitle);
+          let unchanged = Boolean(browserNavigationAttempt.beforeTitle) && afterTitle === browserNavigationAttempt.beforeTitle;
+          if ((stillNewTab || unchanged) && !browserNavigationAttemptLooksResolved(browserNavigationAttempt, latestFrontmost)) {
+            await sleepForComputerUse(900, runControl);
+            latestFrontmost = await adapter.getFocusContext().catch(() => ({}));
+            latestCapture = await adapter.capture({ focusContext: latestFrontmost });
+            currentObservationCapture = latestCapture;
+            lastObservationFingerprint = computerObservationFingerprint(latestCapture);
+            afterTitle = String(latestFrontmost?.activeWindowTitle || "");
+            stillNewTab = /\bnew tab\b/i.test(afterTitle);
+            unchanged = Boolean(browserNavigationAttempt.beforeTitle) && afterTitle === browserNavigationAttempt.beforeTitle;
+          }
+          if (browserNavigationAttemptLooksResolved(browserNavigationAttempt, latestFrontmost) || (afterTitle && !stillNewTab && !unchanged)) {
+            browserNavigationStallCount = 0;
+          } else if (stillNewTab || unchanged) {
             browserNavigationStallCount += 1;
             writeAmbientLog("computer_use_browser_navigation_stalled", {
               requestId: approval.requestId,

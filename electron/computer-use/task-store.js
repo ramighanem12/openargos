@@ -194,6 +194,7 @@ function createComputerUseTaskStore({
       adapter: session.adapter || metadata.adapter || "",
       background: Boolean(session.background || metadata.background),
       finalText: shorten(session.finalText || "", 600),
+      savedDownloads: Array.isArray(metadata.savedDownloads) ? metadata.savedDownloads.slice(-6) : [],
       errorMessage: shorten(session.errorMessage || blocker?.message || "", 600),
       blocker,
       traceSummary,
@@ -216,6 +217,9 @@ function createComputerUseTaskStore({
       `Goal: ${taskState.goal || taskState.task}`,
       taskState.adapter ? `Surface: ${taskState.background ? "background_browser" : "live_mac"} (${taskState.adapter})` : "",
       taskState.finalText ? `Last result: ${taskState.finalText}` : "",
+      Array.isArray(taskState.savedDownloads) && taskState.savedDownloads.length
+        ? `Saved downloads:\n${taskState.savedDownloads.map((item) => item?.path || "").filter(Boolean).join("\n")}`
+        : "",
       taskState.errorMessage ? `Last blocker: ${taskState.errorMessage}` : "",
       taskState.blocker?.category ? `Blocker category: ${taskState.blocker.category}` : "",
       taskState.traceSummary?.lastEvent?.type ? `Last trace event: ${taskState.traceSummary.lastEvent.type}` : "",
@@ -232,6 +236,9 @@ function createComputerUseTaskStore({
       `Status: ${taskState.status || "unknown"}`,
       `Goal: ${taskState.goal || taskState.task}`,
       taskState.finalText ? `Last result: ${taskState.finalText}` : "",
+      Array.isArray(taskState.savedDownloads) && taskState.savedDownloads.length
+        ? `Saved downloads:\n${taskState.savedDownloads.map((item) => item?.path || "").filter(Boolean).join("\n")}`
+        : "",
       taskState.errorMessage ? `Last blocker: ${taskState.errorMessage}` : "",
       taskState.blocker?.category ? `Blocker category: ${taskState.blocker.category}` : "",
       taskState.traceSummary?.lastEvent?.type ? `Last trace event: ${taskState.traceSummary.lastEvent.type}` : "",

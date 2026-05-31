@@ -281,8 +281,8 @@ function createComputerUsePlanner({
   function buildContinuationTask(question = "") {
     const latest = truncateText(String(question || "").replace(/\s+/g, " ").trim(), 260);
     return latest
-      ? `Continue the previous Computer Use task using the latest user request: ${latest}`
-      : "Continue the previous Computer Use task.";
+      ? `Continue Computer Use with this latest user request: ${latest}`
+      : "Continue Computer Use.";
   }
 
   return {

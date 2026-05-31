@@ -26,22 +26,28 @@ if [[ -z "${identity_hash}" ]]; then
   else
     identity_names+=(
       "OpenArgos Local Development"
+      "Argos Local Development"
+      "Argos Local Code Signing"
     )
   fi
 
   for identity_name in "${identity_names[@]}"; do
     identity_hash="$(
       security find-identity -v -p codesigning |
-        awk -v name="${identity_name}" 'index($0, "\"" name "\"") { print $2; exit }'
+        awk -v name="${identity_name}" 'index($0, "\"" name "\"") && index($0, "CSSMERR") == 0 { print $2; exit }'
     )"
-    if [[ -z "${identity_hash}" ]]; then
+    if [[ -z "${identity_hash}" && "${release_sign}" == "1" ]]; then
       identity_hash="$(
         security find-certificate -a -c "${identity_name}" -Z 2>/dev/null |
           awk '/SHA-1 hash:/ { print $3; exit }'
       )"
     fi
     if [[ -n "${identity_hash}" ]]; then
-      echo "Using local code-signing identity: ${identity_name}" >&2
+      if [[ "${release_sign}" == "1" ]]; then
+        echo "Using release code-signing identity: ${identity_name}" >&2
+      else
+        echo "Using local code-signing identity: ${identity_name}" >&2
+      fi
       break
     fi
   done

@@ -935,7 +935,9 @@ let historySearchError = "";
 let historySearchLoading = false;
 let historySearchRequestId = 0;
 let historySearchTimer = 0;
-const ambientHistoryPageSize = 80;
+let ambientHistoryVisibleCount = 60;
+const ambientHistoryPageSize = 60;
+const ambientHistoryFetchPageSize = 80;
 
 function storagePart(value) {
   return encodeURIComponent(String(value || "none"));
@@ -2461,17 +2463,9 @@ function createHistorySessionIcon(session = {}) {
     const badge = document.createElement("span");
     badge.className = "history-session-action-badge is-computer-use";
     badge.setAttribute("aria-label", "Computer Use");
+    badge.title = "Computer Use";
     badge.innerHTML = lucideIcon("monitor");
     icon.append(badge);
-
-    const tooltip = document.createElement("span");
-    tooltip.className = "history-session-tooltip";
-    tooltip.setAttribute("aria-hidden", "true");
-    tooltip.innerHTML = [
-      '<span class="row-tooltip-title">Computer Use</span>',
-      '<span class="row-tooltip-body">This chat used approved Mac actions.</span>'
-    ].join("");
-    icon.append(tooltip);
   }
   return icon;
 }
@@ -2664,10 +2658,20 @@ function setHistoryEmptyMessage(message) {
 
 function setHistoryLoadMoreState() {
   if (!historyLoadMore || !historyViewMoreButton) return;
-  historyLoadMore.hidden = isHistorySearchActive() || !ambientHistoryHasMore;
+  const loadedSessionCount = filterHistorySessions(ambientHistoryRows).length;
+  const canShowLoadedRows = ambientHistoryVisibleCount < loadedSessionCount;
+  historyLoadMore.hidden = isHistorySearchActive() || (!canShowLoadedRows && !ambientHistoryHasMore);
   historyViewMoreButton.disabled = ambientHistoryLoadingMore;
   historyViewMoreButton.classList.toggle("loading", ambientHistoryLoadingMore);
   historyViewMoreButton.textContent = ambientHistoryLoadingMore ? "Loading..." : "View more";
+}
+
+function revealNextAmbientHistoryPage() {
+  const loadedSessionCount = filterHistorySessions(ambientHistoryRows).length;
+  ambientHistoryVisibleCount = Math.min(
+    loadedSessionCount,
+    ambientHistoryVisibleCount + ambientHistoryPageSize
+  );
 }
 
 function renderAmbientHistory(rows = isHistorySearchActive() ? historySearchRows : ambientHistoryRows) {
@@ -2685,8 +2689,11 @@ function renderAmbientHistory(rows = isHistorySearchActive() ? historySearchRows
     return;
   }
   const sessions = filterHistorySessions(rows);
-  historyList.hidden = sessions.length === 0;
-  historyEmpty.hidden = sessions.length > 0;
+  const visibleSessions = isHistorySearchActive()
+    ? sessions
+    : sessions.slice(0, ambientHistoryVisibleCount);
+  historyList.hidden = visibleSessions.length === 0;
+  historyEmpty.hidden = visibleSessions.length > 0;
   if (historySearchError) {
     historyEmpty.textContent = historySearchError;
   } else if (isHistorySearchActive()) {
@@ -2696,7 +2703,7 @@ function renderAmbientHistory(rows = isHistorySearchActive() ? historySearchRows
   }
   renderChatSidebar(ambientHistoryRows);
 
-  sessions.forEach((session) => {
+  visibleSessions.forEach((session) => {
     const chatType = historyChatType(session);
     const row = document.createElement("article");
     row.className = `history-session history-session-${chatType}`;
@@ -2808,13 +2815,14 @@ async function loadAmbientHistory({ force = false } = {}) {
   ambientHistoryCursor = null;
   ambientHistoryHasMore = false;
   ambientHistoryLoadingMore = false;
+  ambientHistoryVisibleCount = ambientHistoryPageSize;
   setHistoryLoadingState();
   setHistoryLoadMoreState();
   historyEmpty.hidden = false;
   historyList.hidden = true;
 
   try {
-    const result = await window.openArgos?.listAmbientHistory?.({ limit: ambientHistoryPageSize });
+    const result = await window.openArgos?.listAmbientHistory?.({ limit: ambientHistoryFetchPageSize });
     if (!result?.ok) throw new Error(result?.message || "Could not load chats.");
     ambientHistoryRows = Array.isArray(result.sessions) ? result.sessions : [];
     ambientHistoryCursor = result.nextCursor || null;
@@ -2834,12 +2842,19 @@ async function loadAmbientHistory({ force = false } = {}) {
 }
 
 async function loadMoreAmbientHistory() {
-  if (!historyViewMoreButton || isHistorySearchActive() || ambientHistoryLoadingMore || !ambientHistoryHasMore) return;
+  if (!historyViewMoreButton || isHistorySearchActive() || ambientHistoryLoadingMore) return;
+  const loadedSessionCount = filterHistorySessions(ambientHistoryRows).length;
+  if (ambientHistoryVisibleCount < loadedSessionCount) {
+    revealNextAmbientHistoryPage();
+    renderAmbientHistory();
+    return;
+  }
+  if (!ambientHistoryHasMore) return;
   ambientHistoryLoadingMore = true;
   setHistoryLoadMoreState();
   try {
     const result = await window.openArgos?.listAmbientHistory?.({
-      limit: ambientHistoryPageSize,
+      limit: ambientHistoryFetchPageSize,
       ...(ambientHistoryCursor?.beforeUpdatedAt ? { beforeUpdatedAt: ambientHistoryCursor.beforeUpdatedAt } : {})
     });
     if (!result?.ok) throw new Error(result?.message || "Could not load more chats.");
@@ -2852,6 +2867,7 @@ async function loadMoreAmbientHistory() {
     });
     ambientHistoryCursor = result.nextCursor || null;
     ambientHistoryHasMore = Boolean(result.hasMore);
+    revealNextAmbientHistoryPage();
     renderAmbientHistory();
   } catch {
     // Keep the existing list stable; the user can retry the button.

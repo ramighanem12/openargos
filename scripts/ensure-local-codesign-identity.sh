@@ -10,7 +10,7 @@ p12_password="${OPENARGOS_CODESIGN_P12_PASSWORD:-openargos-local}"
 
 find_identity_hash() {
   security find-identity -v -p codesigning |
-    awk -v name="${identity_name}" 'index($0, "\"" name "\"") { print $2; exit }'
+    awk -v name="${identity_name}" 'index($0, "\"" name "\"") && index($0, "CSSMERR") == 0 { print $2; exit }'
 }
 
 find_certificate_hash() {
@@ -18,7 +18,17 @@ find_certificate_hash() {
     awk '/SHA-1 hash:/ { print $3; exit }'
 }
 
-if [[ -n "$(find_identity_hash)" || -n "$(find_certificate_hash)" ]]; then
+normalize_user_keychains() {
+  local existing_keychains
+  existing_keychains="$(security list-keychains -d user | tr -d '"' | awk 'NF && !seen[$0]++')"
+  if [[ -n "$existing_keychains" ]]; then
+    # shellcheck disable=SC2086
+    security list-keychains -d user -s $existing_keychains
+  fi
+}
+
+if [[ -n "$(find_identity_hash)" ]]; then
+  normalize_user_keychains
   exit 0
 fi
 
@@ -31,10 +41,12 @@ fi
 security unlock-keychain -p "$keychain_password" "$keychain_path"
 security set-keychain-settings -lut 21600 "$keychain_path"
 
-existing_keychains="$(security list-keychains -d user | tr -d '"')"
+existing_keychains="$(security list-keychains -d user | tr -d '"' | awk 'NF && !seen[$0]++')"
 if ! grep -Fxq "$keychain_path" <<<"$existing_keychains"; then
   # shellcheck disable=SC2086
   security list-keychains -d user -s "$keychain_path" $existing_keychains
+else
+  normalize_user_keychains
 fi
 
 if [[ ! -f "$p12_path" ]]; then
@@ -80,7 +92,20 @@ security set-key-partition-list \
   -k "$keychain_password" \
   "$keychain_path" >/dev/null
 
-if [[ -z "$(find_identity_hash)" && -z "$(find_certificate_hash)" ]]; then
-  echo "Could not create or import ${identity_name} code-signing identity." >&2
+if [[ "${OPENARGOS_TRUST_LOCAL_CODESIGN:-0}" == "1" && -n "$(find_certificate_hash)" ]]; then
+  security add-trusted-cert \
+    -r trustRoot \
+    -p codeSign \
+    -k "$keychain_path" \
+    "$cert_path" >/dev/null 2>&1 || true
+fi
+
+if [[ -z "$(find_identity_hash)" ]]; then
+  cat >&2 <<EOF
+Could not create or import a trusted ${identity_name} code-signing identity.
+
+The certificate exists, but macOS does not trust it for code signing yet. To
+attempt to trust it, run this script with OPENARGOS_TRUST_LOCAL_CODESIGN=1.
+EOF
   exit 1
 fi

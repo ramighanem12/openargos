@@ -27,6 +27,10 @@ let suppressActivateUntil = 0;
 let suppressMainWindowAfterAmbientCloseUntil = 0;
 let tray;
 let trayMenu;
+let lastDockPresenceRepairAt = 0;
+let dockIconImage = null;
+let dockIconWasSet = false;
+let dockPresenceDelayedTimers = [];
 let macosPermissions;
 let lastAmbientLaunchContext = null;
 let dictationMusicPausePromise = null;
@@ -113,6 +117,8 @@ const computerUseNativeAccessibilityMaxTextLength = 9000;
 const computerUseNativeOcrEnabled = process.env.OPENARGOS_COMPUTER_USE_NATIVE_OCR !== "0";
 const computerUseNativeOcrMaxTextLength = 7000;
 const computerUseCriticalApprovalTimeoutMs = 5 * 60 * 1000;
+const localActionToolMaxDownloadBytes = 75 * 1024 * 1024;
+const localActionToolListLimit = 60;
 const ambientAgentMaxOutputTokens = 2400;
 const ambientSoundTypes = new Set([
   "default",
@@ -1072,14 +1078,14 @@ function textLooksLikeComputerUseTask(value, { requireAsk = true } = {}) {
   if (textLooksLikeComputerUseStartOnly(normalized)) return true;
 
   const commandText = computerUseCommandText(normalized);
-  const actionVerb = /\b(change|rename|set|select|choose|click|open|pull up|bring up|expand|list|show|inspect|check|read|find|figure out|look at|look through|go through|look up|search|navigate|go to|switch|configure|turn on|turn off|toggle|scroll|swipe|fill|type|edit|move|update|save|order|reorder|re-order|buy|purchase|checkout|book|reserve|schedule|download|upload|play|pause|resume|stop|skip|queue|shuffle|take control|take over|grab control)\b/.test(normalized);
-  const uiTarget = /\b(openargos|app|settings|setting|tab|dropdown|menu|button|model|models|option|options|selector|sidebar|window|browser|page|field|input|account|profile|name|logo|photo|avatar|memory|memories|appearance|theme|dark|light|system|mode|general|provider|key|keys|dock|menubar|menu\s*bar|desktop|finder|gpt|claude|opus|sonnet|haiku|gemini|spotify|music)\b/.test(normalized);
+  const actionVerb = /\b(change|rename|set|select|choose|click|open|pull up|bring up|expand|list|show|inspect|check|read|find|figure out|look at|look through|go through|look up|search|navigate|go to|switch|configure|turn on|turn off|toggle|scroll|swipe|fill|type|edit|move|update|save|delete|trash|remove|erase|order|reorder|re-order|buy|purchase|checkout|book|reserve|schedule|download|upload|play|pause|resume|stop|skip|queue|shuffle|take control|take over|grab control)\b/.test(normalized);
+  const uiTarget = /\b(openargos|app|settings|setting|tab|dropdown|menu|button|model|models|option|options|selector|sidebar|window|browser|page|field|input|account|profile|name|logo|photo|image|picture|file|folder|download|downloads|avatar|memory|memories|appearance|theme|dark|light|system|mode|general|provider|key|keys|dock|menubar|menu\s*bar|desktop|finder|gpt|claude|opus|sonnet|haiku|gemini|spotify|music)\b/.test(normalized);
   const serviceTarget = /\b(?:website|site|web\s*app|google|chrome|safari|arc|edge|firefox|wikipedia|wiki|maps?|gmail|calendar|docs?|sheets?|slides?|slack|telegram|whatsapp|notion|figma|github|linear|jira|doordash|door\s*dash|uber\s*eats|ubereats|instacart|amazon|prime\s*video|primevideo|shopify|stripe|rippling|linkedin|twitter|x\.com|panda\s+express|spotify|apple\s+music|youtube\s+music)\b/.test(normalized);
   const transactionTarget = /\b(?:order|reorder|re-order|checkout|cart|delivery|restaurant|store|location|hours?|near me|closest|food|meal|ride|flight|hotel|ticket|appointment|reservation|booking|purchase|payment)\b/.test(normalized);
-  const asksForDoing = /\b(can you|could you|please|for me|do it|do that|make that change|go ahead|try to|try and|let's|lets|i want you to|i asked you to|i told you to|you were supposed to|take control|take over|grab control)\b/.test(normalized);
+  const asksForDoing = /\b(can you|could you|please|for me|do it|do that|make that change|go ahead|try to|try and|let's|lets|i want you to|i asked you to|i told you to|i said|you were supposed to|take control|take over|grab control)\b/.test(normalized);
   const asksForInspection = /\b(what|which|where|whether|if|all|everything|every option|all options)\b.+\b(using|selected|enabled|configured|shown|visible|available|supported|says|pick|choose|select)\b/.test(normalized);
-  const imperative = /^(change|rename|set|select|choose|click|open|pull|bring|expand|list|show|inspect|check|read|find|figure|look|search|navigate|go|switch|configure|turn|toggle|scroll|swipe|fill|type|edit|move|update|save|order|reorder|re-order|buy|purchase|checkout|book|reserve|schedule|download|upload|play|pause|resume|stop|skip|queue|shuffle|take|grab)\b/.test(commandText);
-  const directUiCommand = /\b(click|open|pull up|bring up|expand|select|choose|switch|change|set|toggle|scroll|type|fill|go to|navigate|play|pause|resume|stop|skip|queue|shuffle|take control|take over)\b/.test(normalized) && (uiTarget || serviceTarget);
+  const imperative = /^(change|rename|set|select|choose|click|open|pull|bring|expand|list|show|inspect|check|read|find|figure|look|search|navigate|go|switch|configure|turn|toggle|scroll|swipe|fill|type|edit|move|update|save|delete|trash|remove|erase|order|reorder|re-order|buy|purchase|checkout|book|reserve|schedule|download|upload|play|pause|resume|stop|skip|queue|shuffle|take|grab)\b/.test(commandText);
+  const directUiCommand = /\b(click|open|pull up|bring up|expand|select|choose|switch|change|set|toggle|scroll|type|fill|go to|navigate|delete|trash|remove|play|pause|resume|stop|skip|queue|shuffle|take control|take over)\b/.test(normalized) && (uiTarget || serviceTarget);
   const imageDownloadShape = /\b(?:download|save|get|find|grab)\b.+\b(?:photo|photos|image|images|picture|pictures|pic|pics|logo|logos|icon|icons)\b/.test(normalized);
   const mediaControlShape = /\b(?:pause|resume|stop|skip|shuffle)\b/.test(commandText);
   const mediaPlaybackShape = /^(?:play|queue)\s+.{2,}/.test(commandText) && (
@@ -1087,12 +1093,13 @@ function textLooksLikeComputerUseTask(value, { requireAsk = true } = {}) {
     /\bby\s+[\p{L}\p{N}]/iu.test(commandText) ||
     commandText.split(/\s+/).length >= 2
   );
-  const hasTaskShape = actionVerb && (uiTarget || serviceTarget || transactionTarget);
+  const deleteSavedArtifactShape = looksLikeDeleteSavedArtifactRequest(normalized);
+  const hasTaskShape = actionVerb && (uiTarget || serviceTarget || transactionTarget || deleteSavedArtifactShape);
   const hasWebTaskShape = /\b(?:go to|open|navigate to|pull up|bring up)\b/.test(normalized) && (serviceTarget || /\b[a-z0-9-]+\.(?:com|ai|io|app|co|org|net)\b/.test(normalized));
   const hasTransactionShape = /\b(?:order|reorder|re-order|buy|purchase|checkout|book|reserve|schedule)\b/.test(normalized) && (serviceTarget || transactionTarget);
   const hasMediaShape = mediaControlShape || mediaPlaybackShape;
-  if (!requireAsk) return hasTaskShape || hasWebTaskShape || hasTransactionShape || hasMediaShape;
-  return (hasTaskShape || hasWebTaskShape || hasTransactionShape || hasMediaShape || imageDownloadShape) &&
+  if (!requireAsk) return hasTaskShape || hasWebTaskShape || hasTransactionShape || hasMediaShape || deleteSavedArtifactShape;
+  return (hasTaskShape || hasWebTaskShape || hasTransactionShape || hasMediaShape || imageDownloadShape || deleteSavedArtifactShape) &&
     (asksForDoing || asksForInspection || imperative || directUiCommand || imageDownloadShape);
 }
 
@@ -1114,8 +1121,61 @@ function latestComputerUseTaskFromMessages(messages = []) {
   return "";
 }
 
+function localPathFromAmbientText(value = "") {
+  const lines = String(value || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  for (const line of lines) {
+    const match = line.match(/(?:^|\s)((?:~\/|\/Users\/)[^\s`"'<>]+(?:\s[^\s`"'<>]+)*)/);
+    const rawPath = String(match?.[1] || "").replace(/[),.;:!?]+$/g, "").trim();
+    if (rawPath) return rawPath;
+  }
+  return "";
+}
+
+function latestSavedDownloadPathFromMessages(messages = []) {
+  const rows = Array.isArray(messages) ? [...messages].reverse() : [];
+  for (const message of rows) {
+    const metadata = message?.metadata || {};
+    const localPath = metadata.localActionTool?.path;
+    if (localPath) return String(localPath);
+    const savedDownloads = Array.isArray(metadata.savedDownloads)
+      ? metadata.savedDownloads
+      : Array.isArray(metadata.computerUse?.savedDownloads)
+        ? metadata.computerUse.savedDownloads
+        : [];
+    const savedPath = [...savedDownloads].reverse().find((item) => item?.path)?.path;
+    if (savedPath) return String(savedPath);
+    if (message?.role === "assistant") {
+      const textPath = localPathFromAmbientText(message.text || "");
+      if (textPath) return textPath;
+    }
+  }
+  return "";
+}
+
+function latestSavedDownloadPathFromTaskState(taskState = null) {
+  const savedDownloads = Array.isArray(taskState?.savedDownloads) ? taskState.savedDownloads : [];
+  const savedPath = [...savedDownloads].reverse().find((item) => item?.path)?.path;
+  if (savedPath) return String(savedPath);
+  return localPathFromAmbientText(taskState?.finalText || "");
+}
+
+function looksLikeDeleteSavedArtifactRequest(value = "") {
+  const normalized = normalizeComputerIntentText(value);
+  if (!normalized) return false;
+  return /\b(?:delete|trash|remove|move\s+to\s+trash)\b/.test(normalized) &&
+    /\b(?:it|that|this|file|photo|image|picture|download|saved|finder|downloads?)\b/.test(normalized);
+}
+
+function resolveDeleteSavedArtifactTask(question = "", recentMessages = [], taskState = null) {
+  if (!looksLikeDeleteSavedArtifactRequest(question)) return "";
+  const latestPath = latestSavedDownloadPathFromMessages(recentMessages) || latestSavedDownloadPathFromTaskState(taskState);
+  if (!latestPath) return String(question || "").trim();
+  return `Move ${latestPath} to Trash`;
+}
+
 function messageHasComputerUseContext(message = {}) {
   const metadata = message?.metadata || {};
+  if (metadata.actionType === "local_action_tool") return true;
   if (metadata.actionFamily === "computer_use") return true;
   if (metadata.computerUseSessionId || metadata.computerUseApprovalId) return true;
   if (metadata.actionType === "computer_use_approved") return true;
@@ -1153,7 +1213,7 @@ function latestImageDownloadSubjectFromMessages(messages = []) {
 function computerUseCommandText(value = "") {
   let text = normalizeComputerIntentText(value);
   for (let index = 0; index < 6; index += 1) {
-    const next = text.replace(/^(?:q+|ok(?:ay)?|yeah|yep|yes|please|pls|sorry|actually|so|then|now|also|and|but)\b[\s,.:;!?-]*/i, "").trim();
+    const next = text.replace(/^(?:q+|hi|hello|hey|yo|ok(?:ay)?|yeah|yep|yes|please|pls|sorry|actually|so|then|now|also|and|but)\b[\s,.:;!?-]*/i, "").trim();
     if (next === text) break;
     text = next;
   }
@@ -1208,24 +1268,63 @@ function resolveImageDownloadFollowupTask(question, recentMessages = []) {
 
 function mediaPlaybackServiceFromText(value = "") {
   const text = normalizeComputerIntentText(value);
-  if (/\bspotify\b/.test(text)) return "Spotify";
+  if (/\b(?:spotify|spotfy|spofity)\b/.test(text)) return "Spotify";
   if (/\bapple\s+music\b/.test(text)) return "Apple Music";
   if (/\byoutube\s+music\b/.test(text)) return "YouTube Music";
   if (/\byoutube\b/.test(text)) return "YouTube";
   return "";
 }
 
+function mediaPlaybackCommandText(value = "") {
+  const commandText = computerUseCommandText(value)
+    .replace(/^(?:can|could|would|will)\s+(?:you|u)\s+/i, "")
+    .replace(/^(?:i\s+want\s+you\s+to|i\s+need\s+you\s+to)\s+/i, "")
+    .replace(/^please\s+/i, "")
+    .replace(/[\s,.:;!?-]*(?:any|anything|whatever|surprise\s+me)\s*$/i, "")
+    .trim();
+  return commandText;
+}
+
 function parseMediaPlaybackUserText(value = "") {
-  const commandText = computerUseCommandText(value);
-  const match = commandText.match(/^(?:play|queue)\s+(.+?)(?:\s+on\s+(spotify|apple\s+music|youtube\s+music|youtube))?[\s.?!]*$/i);
-  const rawTarget = String(match?.[1] || "").trim();
+  const commandText = mediaPlaybackCommandText(value);
+  const match = commandText.match(/^(?:play|queue)\s+(.+?)(?:\s+(?:on|in|with|using)\s+(spotify|spotfy|spofity|apple\s+music|youtube\s+music|youtube))?[\s.?!]*$/i);
+  let rawTarget = String(match?.[1] || "").trim();
   if (!rawTarget || /^(?:it|that|this|this\s+one|that\s+one|the\s+(?:song|track|one))$/i.test(rawTarget)) return null;
+  if (/^(?:next|previous|prev|last|back|skip)(?:\s+(?:song|track))?(?:\s+(?:on|in|with|using)\s+(?:spotify|spotfy|spofity))?$/i.test(rawTarget)) return null;
+  rawTarget = rawTarget
+    .replace(/\s+(?:on|in|with|using)\s+(?:spotify|spotfy|spofity|apple\s+music|youtube\s+music|youtube)\s*$/i, "")
+    .trim();
   const byMatch = rawTarget.match(/^(.+?)\s+by\s+(.+)$/i);
+  const artistSongMatch = !byMatch
+    ? rawTarget.match(/^(?:a|an|any|some|one)?\s*(.+?)\s+(?:song|track|tune|music)$/i)
+    : null;
+  const parsedTitle = (byMatch?.[1] || (artistSongMatch ? "" : rawTarget)).replace(/^["“”]+|["“”]+$/g, "").trim();
+  const genericTitle = /^(?:a|an|any|some|one)?\s*(?:song|track|tune|music)(?:\s+(?:any|some|one)\s*(?:song|track|tune|music)?)?$|^(?:anything|something)$/i.test(parsedTitle);
   return {
-    title: (byMatch?.[1] || rawTarget).replace(/^["“”]+|["“”]+$/g, "").trim(),
-    artist: (byMatch?.[2] || "").trim(),
-    service: mediaPlaybackServiceFromText(value)
+    title: genericTitle ? "" : parsedTitle,
+    artist: (byMatch?.[2] || artistSongMatch?.[1] || "").trim(),
+    service: mediaPlaybackServiceFromText(match?.[2] || value)
   };
+}
+
+function spotifyTransportIntentFromTask(task = "") {
+  const commandText = mediaPlaybackCommandText(task);
+  const service = mediaPlaybackServiceFromText(commandText);
+  if (service && service !== "Spotify") return null;
+  if (!service && !/\b(?:spotify|spotfy|spofity)\b/i.test(commandText)) return null;
+  if (/^(?:play\s+)?(?:next|skip)(?:\s+(?:song|track))?(?:\s+(?:on|in|with|using)\s+(?:spotify|spotfy|spofity))?[\s.?!]*$/i.test(commandText)) {
+    return { command: "next track", label: "Skipped to the next Spotify track" };
+  }
+  if (/^(?:play\s+)?(?:previous|prev|back|last)(?:\s+(?:song|track))?(?:\s+(?:on|in|with|using)\s+(?:spotify|spotfy|spofity))?[\s.?!]*$/i.test(commandText)) {
+    return { command: "previous track", label: "Went to the previous Spotify track" };
+  }
+  if (/^(?:pause|stop)(?:\s+(?:spotify|music|song|track))?[\s.?!]*$/i.test(commandText)) {
+    return { command: "pause", label: "Paused Spotify" };
+  }
+  if (/^(?:resume|continue|play)(?:\s+(?:spotify|music|song|track))?[\s.?!]*$/i.test(commandText)) {
+    return { command: "play", label: "Started Spotify playback" };
+  }
+  return null;
 }
 
 function parseMediaPlaybackAssistantText(value = "") {
@@ -1239,6 +1338,34 @@ function parseMediaPlaybackAssistantText(value = "") {
   };
 }
 
+function parseMediaPlaybackReferenceText(value = "") {
+  const text = String(value || "").replace(/[.!?]+$/g, "").trim();
+  if (!text) return null;
+  const byMatch = text.match(/^["“]?(.+?)["”]?\s+by\s+(.+?)(?:\s+(?:on|in|with|using)\s+(spotify|apple\s+music|youtube\s+music|youtube))?$/i);
+  if (byMatch?.[1]) {
+    return {
+      title: byMatch[1].trim(),
+      artist: byMatch[2].trim(),
+      service: mediaPlaybackServiceFromText(byMatch[3] || text)
+    };
+  }
+  const parts = text
+    .split(/\s*,\s*|\s+\band\b\s+/i)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length >= 3) {
+    const service = mediaPlaybackServiceFromText(parts[parts.length - 1]);
+    if (service) {
+      return {
+        artist: parts[0],
+        title: parts.slice(1, -1).join(" ").replace(/^["“”]+|["“”]+$/g, "").trim(),
+        service
+      };
+    }
+  }
+  return null;
+}
+
 function latestMediaPlaybackReferenceFromMessages(messages = []) {
   const rows = (Array.isArray(messages) ? [...messages] : [])
     .sort((a, b) => Date.parse(b?.createdAt || 0) - Date.parse(a?.createdAt || 0));
@@ -1248,7 +1375,7 @@ function latestMediaPlaybackReferenceFromMessages(messages = []) {
     const parsed = message.role === "assistant"
       ? parseMediaPlaybackAssistantText(text)
       : message.role === "user"
-        ? parseMediaPlaybackUserText(text)
+        ? (parseMediaPlaybackUserText(text) || parseMediaPlaybackReferenceText(text))
         : null;
     if (parsed?.title) return parsed;
   }
@@ -1257,7 +1384,7 @@ function latestMediaPlaybackReferenceFromMessages(messages = []) {
 
 function resolveMediaPlaybackFollowupTask(question, recentMessages = []) {
   const commandText = computerUseCommandText(question);
-  const match = commandText.match(/^(play|queue)\s+(it|that|this|this\s+one|that\s+one|the\s+(?:song|track|one))\b/i);
+  const match = commandText.match(/\b(play|queue)\s+(it|that|this|this\s+one|that\s+one|the\s+(?:song|track|one))\b/i);
   if (!match) return "";
   const reference = latestMediaPlaybackReferenceFromMessages(recentMessages);
   if (!reference?.title) return "";
@@ -1277,21 +1404,65 @@ async function runAppleScriptOrThrow(script, { timeout = 1800 } = {}) {
   return stdout.trim();
 }
 
-function spotifyControlCommandFromTask(task = "") {
-  const commandText = computerUseCommandText(task);
-  const service = mediaPlaybackServiceFromText(task);
-  if (service && service !== "Spotify") return "";
-  if (/\b(?:next|skip)(?:\s+(?:song|track))?\b/.test(commandText)) return "next track";
-  if (/\b(?:previous|prev|back|last)(?:\s+(?:song|track))?\b/.test(commandText)) return "previous track";
-  if (/^(?:pause|stop)\b/.test(commandText) || /\b(?:pause|stop)\s+(?:spotify|music|song|track)\b/.test(commandText)) return "pause";
-  if (/^(?:resume|continue)\b/.test(commandText)) return "play";
-  if (/^(?:play|start)\s+(?:spotify|music|song|track)\s*$/.test(commandText)) return "play";
-  return "";
+function appleScriptQuotedString(value = "") {
+  return `"${String(value || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+async function runSpotifyTransportCommand(intent = {}) {
+  const command = String(intent.command || "");
+  const allowed = new Set(["play", "pause", "playpause", "next track", "previous track"]);
+  if (!allowed.has(command)) throw new Error(`Unsupported Spotify command: ${command}`);
+  await runAppleScriptOrThrow(`tell application "Spotify" to ${command}`, { timeout: 2200 });
+}
+
+function spotifySearchQueryForPlayback(playbackIntent = {}) {
+  const title = String(playbackIntent.title || "").replace(/[.!?]+$/g, "").trim();
+  const artist = String(playbackIntent.artist || "").trim();
+  if (title && artist) return `${title} ${artist}`.trim();
+  if (title) return title;
+  if (artist) return `${artist} top tracks`.trim();
+  return String(playbackIntent.query || "").trim();
+}
+
+function parseSpotifyTrackInfo(output = "") {
+  const [name = "", artist = "", url = "", state = ""] = String(output || "")
+    .split("\t")
+    .map((part) => part.trim());
+  return { name, artist, url, state };
+}
+
+async function getSpotifyCurrentTrackInfo() {
+  const output = await runAppleScriptOrThrow(`
+    tell application "Spotify"
+      set t to current track
+      return (name of t) & tab & (artist of t) & tab & (spotify url of t) & tab & (player state as text)
+    end tell
+  `, { timeout: 2200 });
+  return parseSpotifyTrackInfo(output);
+}
+
+async function runSpotifyPlaybackCommand(playbackIntent = {}) {
+  const query = spotifySearchQueryForPlayback(playbackIntent);
+  if (!query) throw new Error("Spotify playback needs a song, artist, album, or playlist search.");
+  const uri = `spotify:search:${encodeURIComponent(query)}`;
+  await runAppleScriptOrThrow(`tell application "Spotify" to play track ${appleScriptQuotedString(uri)}`, { timeout: 5000 });
+  await sleep(900);
+  const track = await getSpotifyCurrentTrackInfo();
+  if (!track.name && !track.artist) {
+    throw new Error("Spotify started the search, but did not report the playing track.");
+  }
+  return {
+    ...track,
+    query,
+    label: track.name && track.artist
+      ? `Playing "${track.name}" by ${track.artist} on Spotify`
+      : `Started Spotify playback for ${query}`
+  };
 }
 
 function spotifyPlaybackIntentFromTask(task = "") {
   const parsed = parseMediaPlaybackUserText(task);
-  if (!parsed?.title) return null;
+  if (!parsed?.title && !parsed?.artist) return null;
   const service = parsed.service || mediaPlaybackServiceFromText(task);
   if (service && service !== "Spotify") return null;
   const commandText = computerUseCommandText(task);
@@ -1305,36 +1476,15 @@ function spotifyPlaybackIntentFromTask(task = "") {
   return {
     title: parsed.title,
     artist: parsed.artist,
-    query
+    query,
+    artistOnly: Boolean(!parsed.title && parsed.artist)
   };
-}
-
-async function runSpotifyControlCommand(command = "") {
-  const allowed = new Set(["play", "pause", "playpause", "next track", "previous track"]);
-  if (!allowed.has(command)) throw new Error(`Unsupported Spotify command: ${command}`);
-  await runAppleScriptOrThrow(`tell application "Spotify" to ${command}`, { timeout: 2200 });
-}
-
-async function runSpotifySearchAndPlay(intent = {}) {
-  const query = String(intent.query || "").trim();
-  if (!query) throw new Error("Missing Spotify search query.");
-  await runExecFile("/usr/bin/open", [`spotify:search:${encodeURIComponent(query)}`], {
-    timeout: 1800,
-    maxBuffer: 1024 * 1024
-  });
-  await sleep(850);
-  await runAppleScriptOrThrow(`
-    tell application "Spotify" to activate
-    delay 0.25
-    tell application "System Events"
-      key code 36
-    end tell
-  `, { timeout: 2600 });
-  await sleep(250);
 }
 
 function resolveComputerUseTask(question, recentMessages = [], { taskState = null } = {}) {
   const text = String(question || "").trim();
+  const deleteSavedArtifactTask = resolveDeleteSavedArtifactTask(text, recentMessages, taskState);
+  if (deleteSavedArtifactTask) return deleteSavedArtifactTask;
   const mediaFollowupTask = resolveMediaPlaybackFollowupTask(text, recentMessages);
   if (mediaFollowupTask) return mediaFollowupTask;
   if (textLooksLikeComputerUseStartOnly(text)) {
@@ -2824,7 +2974,7 @@ function computerCaptureContextText(capture) {
   ].filter(Boolean).join("\n");
 }
 
-async function executeComputerAction(action, capture, { task = "" } = {}) {
+async function executeComputerAction(action, capture, { task = "", nativeAddressBarActive = false } = {}) {
   const permissions = getMacOSPermissions();
   if (!permissions) throw new Error("OpenArgos' native macOS input bridge is not available.");
 
@@ -2903,7 +3053,17 @@ async function executeComputerAction(action, capture, { task = "" } = {}) {
   if (type === "type") {
     const text = String(action.text || "");
     if (!text) return;
-    if (text.length >= 12 && !computerUseTextLooksSensitive(text, task) && typeof permissions.setFocusedValueIfEmpty === "function") {
+    const canUseBulkTextEntry = text.length >= 12 && !computerUseTextLooksSensitive(text, task);
+    if (canUseBulkTextEntry && nativeAddressBarActive) {
+      permissions.keyPress(["COMMAND", "A"]);
+      await sleep(45);
+      await pasteComputerText(permissions, text);
+      writeAmbientLog("computer_use_native_address_bar_replace", {
+        textLength: text.length
+      });
+      return;
+    }
+    if (canUseBulkTextEntry && typeof permissions.setFocusedValueIfEmpty === "function") {
       const axSetResult = permissions.setFocusedValueIfEmpty(text);
       if (axSetResult?.ok) {
         writeAmbientLog("computer_use_native_ax_set_value", {
@@ -2921,7 +3081,7 @@ async function executeComputerAction(action, capture, { task = "" } = {}) {
         textLength: text.length
       });
     }
-    if (text.length >= 12 && !computerUseTextLooksSensitive(text, task)) {
+    if (canUseBulkTextEntry) {
       await pasteComputerText(permissions, text);
       return;
     }
@@ -2952,6 +3112,9 @@ async function applyNativeComputerUseInterceptors() {
 }
 
 function createNativeComputerUseAdapter(task = "") {
+  const actionState = {
+    addressBarActive: false
+  };
   return {
     kind: "native",
     label: "Live Mac",
@@ -2982,7 +3145,22 @@ function createNativeComputerUseAdapter(task = "") {
       return await applyNativeComputerUseInterceptors();
     },
     async execute(action, capture, context = {}) {
-      return await executeComputerAction(action, capture, context);
+      const type = normalizeComputerActionType(action);
+      const executionContext = {
+        ...context,
+        nativeAddressBarActive: actionState.addressBarActive
+      };
+      try {
+        return await executeComputerAction(action, capture, executionContext);
+      } finally {
+        if (computerActionIsBackgroundAddressBarShortcut(action)) {
+          actionState.addressBarActive = true;
+        } else if (type === "keypress" && (computerActionIsReturnKeypress(action) || computerActionIsEscapeKeypress(action))) {
+          actionState.addressBarActive = false;
+        } else if (["click", "double_click", "drag", "scroll"].includes(type)) {
+          actionState.addressBarActive = false;
+        }
+      }
     }
   };
 }
@@ -3406,6 +3584,7 @@ function computerActionIsSaveShortcut(action) {
 
 function normalizedComputerActionKeys(action) {
   return (Array.isArray(action.keys) ? action.keys : [action.key || action.text].filter(Boolean))
+    .flatMap((key) => String(key || "").split("+"))
     .map(normalizeComputerKey)
     .filter(Boolean);
 }
@@ -3561,6 +3740,354 @@ function cleanImageCandidateFilenameLabel(value = "") {
 
 function computerUseDownloadsDir() {
   return app.getPath("downloads");
+}
+
+function localActionToolNamedDirectory(name = "") {
+  const key = String(name || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const map = {
+    desktop: "desktop",
+    desktops: "desktop",
+    documents: "documents",
+    downloads: "downloads",
+    download: "downloads",
+    pictures: "pictures",
+    photos: "pictures",
+    music: "music",
+    movies: "videos",
+    videos: "videos",
+    home: "home"
+  };
+  const appPathKey = map[key];
+  if (!appPathKey) return null;
+  try {
+    const targetPath = app.getPath(appPathKey);
+    return targetPath ? { name: key, path: targetPath } : null;
+  } catch {
+    return null;
+  }
+}
+
+function localActionToolDisplayPath(targetPath = "") {
+  const resolvedPath = path.resolve(String(targetPath || ""));
+  const home = path.resolve(app.getPath("home"));
+  const relative = path.relative(home, resolvedPath);
+  if (relative && !relative.startsWith("..") && !path.isAbsolute(relative)) {
+    return `~/${relative}`;
+  }
+  if (!relative) return "~";
+  return resolvedPath;
+}
+
+function localActionToolPathWithin(parent = "", child = "") {
+  const relative = path.relative(path.resolve(parent), path.resolve(child));
+  return relative === "" || (relative && !relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function localActionToolResolvePath(rawPath = "") {
+  const cleaned = String(rawPath || "")
+    .trim()
+    .replace(/^file:\/\//i, "")
+    .replace(/^["'`]|["'`]$/g, "")
+    .replace(/[),.;:!?]+$/g, "");
+  if (!cleaned) return "";
+  if (cleaned === "~") return app.getPath("home");
+  if (cleaned.startsWith("~/")) return path.resolve(app.getPath("home"), cleaned.slice(2));
+  if (path.isAbsolute(cleaned)) return path.resolve(cleaned);
+  return "";
+}
+
+function localActionToolCanOpenPath(targetPath = "") {
+  const resolvedPath = path.resolve(String(targetPath || ""));
+  const home = path.resolve(app.getPath("home"));
+  return localActionToolPathWithin(home, resolvedPath);
+}
+
+function localActionToolCanListPath(targetPath = "") {
+  const resolvedPath = path.resolve(String(targetPath || ""));
+  const allowedRoots = ["downloads", "desktop", "documents", "pictures", "music", "videos"]
+    .map((name) => {
+      try {
+        return app.getPath(name);
+      } catch {
+        return "";
+      }
+    })
+    .filter(Boolean);
+  return allowedRoots.some((root) => localActionToolPathWithin(root, resolvedPath));
+}
+
+function localActionToolNormalizeUrl(rawUrl = "", { allowMailto = false } = {}) {
+  const value = String(rawUrl || "")
+    .trim()
+    .replace(/^["'`]|["'`]$/g, "")
+    .replace(/[),.;:!?]+$/g, "");
+  if (!value) return "";
+  const source = /^[a-z][a-z0-9+.-]*:/i.test(value) ? value : `https://${value}`;
+  try {
+    const url = new URL(source);
+    if (url.protocol === "http:" || url.protocol === "https:") return url.toString();
+    if (allowMailto && url.protocol === "mailto:") return url.toString();
+  } catch {
+    return "";
+  }
+  return "";
+}
+
+function localActionToolResolveAppName(rawName = "") {
+  const normalized = String(rawName || "")
+    .trim()
+    .replace(/\s+app$/i, "")
+    .replace(/\.app$/i, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  const apps = new Map([
+    ["chrome", "Google Chrome"],
+    ["google chrome", "Google Chrome"],
+    ["safari", "Safari"],
+    ["arc", "Arc"],
+    ["spotify", "Spotify"],
+    ["finder", "Finder"],
+    ["notes", "Notes"],
+    ["calendar", "Calendar"],
+    ["mail", "Mail"],
+    ["messages", "Messages"],
+    ["preview", "Preview"],
+    ["terminal", "Terminal"],
+    ["system settings", "System Settings"],
+    ["settings", "System Settings"],
+    ["activity monitor", "Activity Monitor"]
+  ]);
+  return apps.get(normalized) || "";
+}
+
+function localActionToolCleanFilename(value = "", fallback = "download") {
+  const raw = String(value || "")
+    .trim()
+    .replace(/^["'`]|["'`]$/g, "")
+    .replace(/[?*:"<>|/\\\u0000-\u001f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const base = path.basename(raw || fallback).replace(/^\.+/, "").slice(0, 120);
+  return base || fallback;
+}
+
+function localActionToolFilenameFromUrl(url = "") {
+  try {
+    const pathname = new URL(url).pathname || "";
+    const basename = decodeURIComponent(path.basename(pathname));
+    return localActionToolCleanFilename(basename || "download", "download");
+  } catch {
+    return "download";
+  }
+}
+
+function localActionToolUniquePath(directory = "", filename = "download") {
+  const cleanFilename = localActionToolCleanFilename(filename, "download");
+  const parsed = path.parse(cleanFilename);
+  const base = (parsed.name || "download").slice(0, 100);
+  const ext = (parsed.ext || "").slice(0, 16);
+  let candidate = path.join(directory, `${base}${ext}`);
+  let index = 2;
+  while (fs.existsSync(candidate)) {
+    candidate = path.join(directory, `${base}-${index}${ext}`);
+    index += 1;
+  }
+  return candidate;
+}
+
+function localActionToolDetectIntent(question = "", recentMessages = []) {
+  const text = String(question || "").trim().replace(/\s+/g, " ");
+  if (!text) return null;
+
+  const spotifyTransportIntent = spotifyTransportIntentFromTask(text);
+  if (spotifyTransportIntent) {
+    return { name: "spotify_transport", transportIntent: spotifyTransportIntent };
+  }
+
+  const spotifyPlaybackIntent = spotifyPlaybackIntentFromTask(text);
+  if (spotifyPlaybackIntent) {
+    return { name: "spotify_playback", playbackIntent: spotifyPlaybackIntent };
+  }
+
+  const mediaFollowupTask = resolveMediaPlaybackFollowupTask(text, recentMessages);
+  if (mediaFollowupTask) {
+    const followupTransportIntent = spotifyTransportIntentFromTask(mediaFollowupTask);
+    if (followupTransportIntent) {
+      return { name: "spotify_transport", transportIntent: followupTransportIntent };
+    }
+    const followupPlaybackIntent = spotifyPlaybackIntentFromTask(mediaFollowupTask);
+    if (followupPlaybackIntent) {
+      return { name: "spotify_playback", playbackIntent: followupPlaybackIntent };
+    }
+  }
+
+  const downloadUrlMatch = text.match(/\b(?:download|save|get)\s+(https?:\/\/[^\s"'`<>]+)(?:\s+(?:as|to|named|name(?:\s+the\s+file)?|save\s+as)\s+["“]?(.+?)["”]?)?$/i);
+  if (downloadUrlMatch) {
+    return {
+      name: "download_url",
+      url: localActionToolNormalizeUrl(downloadUrlMatch[1]),
+      filename: String(downloadUrlMatch[2] || "").trim()
+    };
+  }
+
+  const openUrlMatch = text.match(/^(?:open|go to|visit|launch)\s+((?:https?:\/\/|www\.)[^\s"'`<>]+|[a-z0-9][a-z0-9.-]+\.[a-z]{2,}(?:\/[^\s"'`<>]*)?)$/i);
+  if (openUrlMatch) {
+    const url = localActionToolNormalizeUrl(openUrlMatch[1], { allowMailto: true });
+    if (url) return { name: "open_url", url };
+  }
+
+  const listNamedDirectoryMatch = text.match(/^(?:list|show|what(?:'s| is)|what files are in)\s+(?:my\s+)?(downloads?|documents|desktop|pictures|photos|music|movies|videos)(?:\s+folder)?$/i);
+  if (listNamedDirectoryMatch) {
+    const directory = localActionToolNamedDirectory(listNamedDirectoryMatch[1]);
+    if (directory) return { name: "list_directory", path: directory.path };
+  }
+
+  const openNamedDirectoryMatch = text.match(/^(?:open|show)\s+(?:my\s+)?(downloads?|documents|desktop|pictures|photos|music|movies|videos|home)(?:\s+folder)?$/i);
+  if (openNamedDirectoryMatch) {
+    const directory = localActionToolNamedDirectory(openNamedDirectoryMatch[1]);
+    if (directory) return { name: "open_path", path: directory.path };
+  }
+
+  const pathMatch = text.match(/^(?:open|show|reveal)\s+(?:the\s+)?(?:(?:file|folder|path)\s+)?((?:~\/|\/Users\/)[^"'`]+)$/i);
+  if (pathMatch) {
+    const targetPath = localActionToolResolvePath(pathMatch[1]);
+    if (targetPath) return { name: "open_path", path: targetPath };
+  }
+
+  const appMatch = text.match(/^(?:open|launch|start)\s+(?:the\s+)?(.+?)(?:\s+app)?$/i);
+  if (appMatch) {
+    const appName = localActionToolResolveAppName(appMatch[1]);
+    if (appName) return { name: "open_app", appName };
+  }
+
+  return null;
+}
+
+async function localActionToolExecute(intent = {}, { onStatus } = {}) {
+  if (!intent?.name) throw new Error("No local action was selected.");
+  if (intent.name === "spotify_transport") {
+    const transportIntent = intent.transportIntent || {};
+    onStatus?.("Controlling Spotify");
+    await runSpotifyTransportCommand(transportIntent);
+    return {
+      answer: transportIntent.label || "Updated Spotify playback",
+      metadata: { appName: "Spotify", target: transportIntent.command || "" }
+    };
+  }
+
+  if (intent.name === "spotify_playback") {
+    const playbackIntent = intent.playbackIntent || {};
+    onStatus?.("Playing Spotify");
+    const result = await runSpotifyPlaybackCommand(playbackIntent);
+    return {
+      answer: `${result.label}.`,
+      metadata: {
+        appName: "Spotify",
+        target: result.query || "",
+        trackName: result.name || "",
+        artist: result.artist || "",
+        url: result.url || ""
+      }
+    };
+  }
+
+  if (intent.name === "open_url") {
+    const url = localActionToolNormalizeUrl(intent.url, { allowMailto: true });
+    if (!url) throw new Error("That URL is not supported.");
+    onStatus?.("Opening");
+    await shell.openExternal(url);
+    return {
+      answer: `Opened ${url}`,
+      metadata: { url }
+    };
+  }
+
+  if (intent.name === "open_app") {
+    const appName = localActionToolResolveAppName(intent.appName) || intent.appName;
+    if (!appName) throw new Error("That app is not in the local action allowlist yet.");
+    onStatus?.("Opening app");
+    await runExecFile("/usr/bin/open", ["-a", appName], { timeout: 5000 });
+    return {
+      answer: `Opened ${appName}`,
+      metadata: { appName }
+    };
+  }
+
+  if (intent.name === "open_path") {
+    const targetPath = localActionToolResolvePath(intent.path);
+    if (!targetPath || !localActionToolCanOpenPath(targetPath)) {
+      throw new Error("For safety, local path actions are limited to files in your home folder.");
+    }
+    if (!fs.existsSync(targetPath)) throw new Error(`That path does not exist: ${localActionToolDisplayPath(targetPath)}`);
+    onStatus?.("Opening path");
+    const stat = fs.statSync(targetPath);
+    if (stat.isDirectory()) {
+      const errorMessage = await shell.openPath(targetPath);
+      if (errorMessage) throw new Error(errorMessage);
+      return {
+        answer: `Opened ${localActionToolDisplayPath(targetPath)}`,
+        metadata: { path: targetPath }
+      };
+    }
+    shell.showItemInFolder(targetPath);
+    return {
+      answer: `Revealed ${localActionToolDisplayPath(targetPath)}`,
+      metadata: { path: targetPath }
+    };
+  }
+
+  if (intent.name === "list_directory") {
+    const targetPath = localActionToolResolvePath(intent.path);
+    if (!targetPath || !localActionToolCanListPath(targetPath)) {
+      throw new Error("For safety, directory listing is limited to Downloads, Desktop, Documents, Pictures, Music, and Movies.");
+    }
+    if (!fs.existsSync(targetPath) || !fs.statSync(targetPath).isDirectory()) {
+      throw new Error(`That folder does not exist: ${localActionToolDisplayPath(targetPath)}`);
+    }
+    onStatus?.("Reading folder");
+    const entries = await fs.promises.readdir(targetPath, { withFileTypes: true });
+    const visibleEntries = entries
+      .filter((entry) => !entry.name.startsWith("."))
+      .sort((a, b) => {
+        if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+      })
+      .slice(0, localActionToolListLimit);
+    const rows = visibleEntries.map((entry) => `- ${entry.isDirectory() ? "Folder" : "File"}: ${entry.name}`);
+    const suffix = entries.length > visibleEntries.length ? `\n\nShowing ${visibleEntries.length} of ${entries.length} items.` : "";
+    return {
+      answer: rows.length
+        ? `${localActionToolDisplayPath(targetPath)}\n\n${rows.join("\n")}${suffix}`
+        : `${localActionToolDisplayPath(targetPath)} is empty`,
+      metadata: { path: targetPath, count: visibleEntries.length, totalCount: entries.length }
+    };
+  }
+
+  if (intent.name === "download_url") {
+    const url = localActionToolNormalizeUrl(intent.url);
+    if (!url) throw new Error("That download URL is not supported.");
+    onStatus?.("Downloading");
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Download failed (${response.status}).`);
+    const lengthHeader = Number(response.headers.get("content-length") || 0);
+    if (lengthHeader > localActionToolMaxDownloadBytes) {
+      throw new Error("That file is too large for the local quick-download tool.");
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    if (arrayBuffer.byteLength > localActionToolMaxDownloadBytes) {
+      throw new Error("That file is too large for the local quick-download tool.");
+    }
+    const fallbackFilename = localActionToolFilenameFromUrl(url);
+    const requestedFilename = localActionToolCleanFilename(intent.filename || fallbackFilename, fallbackFilename);
+    const targetPath = localActionToolUniquePath(app.getPath("downloads"), requestedFilename);
+    await fs.promises.writeFile(targetPath, Buffer.from(arrayBuffer));
+    return {
+      answer: `Downloaded to\n${localActionToolDisplayPath(targetPath)}`,
+      metadata: { url, path: targetPath, byteLength: arrayBuffer.byteLength }
+    };
+  }
+
+  throw new Error("That local action is not supported yet.");
 }
 
 function backgroundImageDownloadBasename(task = "", candidate = {}) {
@@ -5557,58 +6084,50 @@ function addSyntheticComputerUseStep({ approval, computerUseSteps, sendStream, l
 
 async function maybeRunSpotifyComputerUseFastPath({ approval, sendStream, sendStatus, computerUseSteps }) {
   const task = String(approval?.task || "").trim();
-  const controlCommand = spotifyControlCommandFromTask(task);
-  if (controlCommand) {
+  const transportIntent = spotifyTransportIntentFromTask(task);
+  if (transportIntent) {
     sendStatus("Controlling Spotify");
-    await runSpotifyControlCommand(controlCommand);
-    const controlLabel = controlCommand === "next track"
-      ? "Skipped to the next Spotify track"
-      : controlCommand === "previous track"
-        ? "Went to the previous Spotify track"
-        : controlCommand === "pause"
-          ? "Paused Spotify"
-          : "Started Spotify playback";
+    await runSpotifyTransportCommand(transportIntent);
     addSyntheticComputerUseStep({
       approval,
       computerUseSteps,
       sendStream,
-      label: controlLabel,
+      label: transportIntent.label || "Updated Spotify playback",
       surface: "live_mac",
-      detail: { app: "Spotify", target: controlCommand }
+      detail: { app: "Spotify", target: transportIntent.command || "" }
     });
     return {
       completed: true,
-      finalText: `${controlLabel}.`,
+      finalText: `${transportIntent.label || "Updated Spotify playback"}.`,
       savedDownloads: []
     };
   }
 
   const playbackIntent = spotifyPlaybackIntentFromTask(task);
-  if (!playbackIntent) return null;
-  sendStatus("Opening Spotify");
-  addSyntheticComputerUseStep({
-    approval,
-    computerUseSteps,
-    sendStream,
-    label: `Opened Spotify search for ${playbackIntent.query}`,
-    surface: "live_mac",
-    detail: { app: "Spotify", target: playbackIntent.query }
-  });
-  await runSpotifySearchAndPlay(playbackIntent);
-  sendStatus("Started Spotify");
-  addSyntheticComputerUseStep({
-    approval,
-    computerUseSteps,
-    sendStream,
-    label: `Started Spotify playback for ${playbackIntent.query}`,
-    surface: "live_mac",
-    detail: { app: "Spotify", target: playbackIntent.query }
-  });
-  return {
-    completed: true,
-    finalText: `Playing "${playbackIntent.title}"${playbackIntent.artist ? ` by ${playbackIntent.artist}` : ""} on Spotify.`,
-    savedDownloads: []
-  };
+  if (playbackIntent) {
+    sendStatus("Playing Spotify");
+    const result = await runSpotifyPlaybackCommand(playbackIntent);
+    addSyntheticComputerUseStep({
+      approval,
+      computerUseSteps,
+      sendStream,
+      label: result.label || "Started Spotify playback",
+      surface: "live_mac",
+      detail: {
+        app: "Spotify",
+        target: result.query || "",
+        url: result.url || "",
+        trackName: result.name || "",
+        artist: result.artist || ""
+      }
+    });
+    return {
+      completed: true,
+      finalText: `${result.label || "Started Spotify playback"}.`,
+      savedDownloads: []
+    };
+  }
+  return null;
 }
 
 async function maybeRunComputerUseFastPath({ approval, adapter, sendStream, sendStatus, computerUseSteps }) {
@@ -5781,6 +6300,12 @@ function cleanAmbientMemoryText(value) {
     .trim();
 }
 
+function stripTrailingMemoryQuestion(value = "") {
+  return String(value || "")
+    .replace(/[\s\u200B-\u200D\uFEFF]*[?？]+(?:[\s\u200B-\u200D\uFEFF]*["'“”‘’`]+)?[\s\u200B-\u200D\uFEFF]*$/g, "")
+    .trim();
+}
+
 function userVisibleMemoryText(value) {
   let text = cleanAmbientMemoryText(value);
   text = text.replace(/^(?:the\s+user|user)\s+(is|has|likes|prefers|wants|needs|lives|works|uses)\b/i, (_match, verb) => {
@@ -5797,7 +6322,7 @@ function userVisibleMemoryText(value) {
     };
     return replacements[String(verb || "").toLowerCase()] || "I";
   });
-  text = text.replace(/\s*[?？]+$/g, "");
+  text = stripTrailingMemoryQuestion(text);
   text = text.replace(/\s+/g, " ").trim();
   if (!text) return "";
   return text;
@@ -5848,6 +6373,7 @@ function detectComputerUseIntent(question, { recentMessages = [], taskState = nu
   const normalized = normalizeComputerIntentText(question);
   if (!normalized || rejectsComputerUseIntent(normalized)) return false;
   if (textLooksLikeComputerUseTask(normalized)) return true;
+  if (resolveMediaPlaybackFollowupTask(question, recentMessages)) return true;
   if (resolveImageDownloadFollowupTask(question, recentMessages)) return true;
 
   const followupAsksToAct = textLooksLikeComputerUseFollowup(normalized);
@@ -7095,6 +7621,24 @@ function localCreateMemory(text) {
   return memory;
 }
 
+function repairLocalMemoryTexts() {
+  updateLocalStore((store) => {
+    const memories = Array.isArray(store.memories) ? store.memories : [];
+    let changed = false;
+    const nextMemories = memories.map((memory) => {
+      const normalizedText = userVisibleMemoryText(memory?.text || "");
+      if (!normalizedText || normalizedText === memory.text) return memory;
+      changed = true;
+      return {
+        ...memory,
+        text: normalizedText,
+        updatedAt: Date.now()
+      };
+    });
+    return changed ? { ...store, memories: nextMemories } : store;
+  });
+}
+
 function localSetAmbientThreadTitle(threadId, title, metadata = {}) {
   let result = null;
   updateLocalStore((store) => {
@@ -7203,8 +7747,7 @@ function sendToMainWindow(channel, payload) {
   const send = () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(channel, payload);
-      mainWindow.show();
-      mainWindow.focus();
+      revealMainWindow();
     }
   };
 
@@ -7702,15 +8245,24 @@ function navigateMainWindow(page) {
   send();
 }
 
-function createWindow(page) {
-  scheduleDockPresenceRepair("main_window_requested");
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.setSkipTaskbar(false);
-    mainWindow.show();
+function revealMainWindow(page, { focus = true } = {}) {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.setSkipTaskbar(false);
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  if (!mainWindow.isVisible()) mainWindow.show();
+  if (focus && !mainWindow.isFocused()) {
     mainWindow.focus();
-    navigateMainWindow(page);
+  }
+  navigateMainWindow(page);
+}
+
+function createWindow(page) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    revealMainWindow(page);
     return;
   }
+
+  scheduleDockPresenceRepair("main_window_requested");
 
   mainWindow = new BrowserWindow({
     width: 1040,
@@ -7736,7 +8288,7 @@ function createWindow(page) {
   });
 
   mainWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
-  ["enter-full-screen", "leave-full-screen", "maximize", "unmaximize", "resize"].forEach((eventName) => {
+  ["enter-full-screen", "leave-full-screen", "maximize", "unmaximize"].forEach((eventName) => {
     mainWindow.on(eventName, () => sendMainWindowState());
   });
   mainWindow.once("ready-to-show", () => {
@@ -8079,17 +8631,20 @@ function ensureDockPresence(reason = "unknown") {
     });
   }
   try {
-    if (dockIconPath) {
-      let dockIcon = nativeImage.createFromPath(dockIconPath);
-      if (dockIcon.isEmpty()) {
+    if (dockIconPath && !dockIconWasSet) {
+      if (!dockIconImage) {
+        dockIconImage = nativeImage.createFromPath(dockIconPath);
+      }
+      if (dockIconImage.isEmpty()) {
         try {
-          dockIcon = nativeImage.createFromBuffer(fs.readFileSync(dockIconPath));
+          dockIconImage = nativeImage.createFromBuffer(fs.readFileSync(dockIconPath));
         } catch {
           // The log below records the final empty image state.
         }
       }
-      if (!dockIcon.isEmpty()) {
-        app.dock?.setIcon(dockIcon);
+      if (!dockIconImage.isEmpty()) {
+        app.dock?.setIcon(dockIconImage);
+        dockIconWasSet = true;
       } else {
         writeAmbientLog("dock_icon_empty", { reason, path: dockIconPath });
       }
@@ -8103,11 +8658,20 @@ function ensureDockPresence(reason = "unknown") {
   }
 }
 
-function scheduleDockPresenceRepair(reason = "unknown") {
+function scheduleDockPresenceRepair(reason = "unknown", options = {}) {
+  if (process.platform !== "darwin") return;
+  const force = Boolean(options.force);
+  const withDelayedRepairs = options.delayed !== false;
+  const now = Date.now();
+  if (!force && now - lastDockPresenceRepairAt < 900) return;
+  lastDockPresenceRepairAt = now;
+  dockPresenceDelayedTimers.forEach((timer) => clearTimeout(timer));
+  dockPresenceDelayedTimers = [];
   ensureDockPresence(reason);
-  [250, 1200].forEach((delayMs) => {
-    setTimeout(() => ensureDockPresence(`${reason}:delayed-${delayMs}`), delayMs);
-  });
+  if (!withDelayedRepairs) return;
+  dockPresenceDelayedTimers = [350, 1400].map((delayMs) => setTimeout(() => {
+    ensureDockPresence(`${reason}:delayed-${delayMs}`);
+  }, delayMs));
 }
 
 function sendAmbientVoiceShortcutIfOpen({ phase = "down", source = "ambient-window" } = {}) {
@@ -9443,17 +10007,84 @@ async function handleLocalAmbientAsk(event, payload, { question, requestId, stre
   let contextSnapshot = null;
   let policy = null;
   let credential = null;
+  let previousMessages = [];
+  let normalizedPreviousMessages = [];
 
   try {
+    thread = localEnsureAmbientThread(String(payload.threadId || "").trim() || null, { title: "Chat" });
+    previousMessages = localListAmbientMessages(thread._id, 24);
+    normalizedPreviousMessages = previousMessages.map(normalizeAmbientMessageDoc).filter(Boolean).reverse();
+
+    const localActionIntent = localActionToolDetectIntent(question, normalizedPreviousMessages);
+    if (localActionIntent) {
+      sendStatus("Running locally");
+      const userMessage = localAddAmbientMessage({
+        threadId: thread._id,
+        role: "user",
+        text: question,
+        metadata: {
+          requestId,
+          localActionTool: {
+            name: localActionIntent.name
+          }
+        }
+      });
+      sendStream("route", {
+        mode: "local_tool",
+        screenshot: false,
+        webSearch: false,
+        provider: "local",
+        model: "local-action-tool",
+        tool: localActionIntent.name
+      });
+      const localActionResult = await localActionToolExecute(localActionIntent, { onStatus: sendStatus });
+      const answerText = normalizeAmbientResponseText(localActionResult.answer) || "Done.";
+      sendStream("delta", { text: answerText });
+      const assistantMessage = localAddAmbientMessage({
+        threadId: thread._id,
+        role: "assistant",
+        text: answerText,
+        status: "completed",
+        provider: "local",
+        model: "local-action-tool",
+        contextSnapshotId: null,
+        metadata: {
+          requestId,
+          actionType: "local_action_tool",
+          localActionTool: {
+            name: localActionIntent.name,
+            ...(localActionResult.metadata || {})
+          }
+        }
+      });
+      notifyMainWindow("ambient:history-changed", { threadId: thread._id });
+      writeAmbientLog("local_action_tool_completed", {
+        requestId,
+        threadId: thread._id,
+        tool: localActionIntent.name,
+        durationMs: Date.now() - startedAt
+      });
+      return {
+        ok: true,
+        threadId: thread._id,
+        requestId,
+        question: normalizeAmbientMessageDoc(userMessage),
+        answer: normalizeAmbientMessageDoc(assistantMessage),
+        provider: "local",
+        model: "local-action-tool",
+        context: {
+          mode: "local_tool",
+          tool: localActionIntent.name
+        }
+      };
+    }
+
     if (!hasLlmProviderCredential()) {
       const missingKey = missingLlmKeyResult();
       sendStream("error", { message: missingKey.message });
       return missingKey;
     }
     sendStatus("Thinking");
-    thread = localEnsureAmbientThread(String(payload.threadId || "").trim() || null, { title: "Chat" });
-    const previousMessages = localListAmbientMessages(thread._id, 24);
-    const normalizedPreviousMessages = previousMessages.map(normalizeAmbientMessageDoc).filter(Boolean).reverse();
     policy = await getLocalRuntimeModelPolicy();
     credential = resolveCredentialForPolicy(policy);
     const latestComputerUseTaskState = latestComputerUseTaskStateForThread(thread._id);
@@ -10683,7 +11314,8 @@ ipcMain.handle("ambient:resize", (_event, payload) => {
 });
 
 app.whenReady().then(() => {
-  scheduleDockPresenceRepair("app_ready");
+  scheduleDockPresenceRepair("app_ready", { force: true });
+  repairLocalMemoryTexts();
   recoverInterruptedComputerUseSessions();
   configurePermissionRequests();
   loadStoredTheme();
@@ -10699,7 +11331,6 @@ nativeTheme.on("updated", () => {
 });
 
 app.on("activate", () => {
-  scheduleDockPresenceRepair("app_activate");
   const ambientFocused = Boolean(ambientWindow && !ambientWindow.isDestroyed() && ambientWindow.isFocused());
   const now = Date.now();
   const shouldSuppressActivate = suppressNextActivate || now < suppressActivateUntil || now < suppressMainWindowAfterAmbientCloseUntil || ambientFocused;
@@ -10712,6 +11343,7 @@ app.on("activate", () => {
     return;
   }
 
+  scheduleDockPresenceRepair("app_activate", { delayed: false });
   createWindow();
 });
 

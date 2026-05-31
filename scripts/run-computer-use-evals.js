@@ -62,6 +62,27 @@ function hasRecentComputerUseContext(messages = []) {
 
 function resolveComputerUseTask(question, _recentMessages = [], { taskState = null } = {}) {
   const text = String(question || "").trim();
+  const playReference = text.match(/\b(play|queue)\s+(it|that|this|this one|that one|the song|the track)\b/i);
+  if (playReference) {
+    const recent = [...(_recentMessages || [])]
+      .sort((a, b) => Date.parse(b?.createdAt || 0) - Date.parse(a?.createdAt || 0));
+    for (const message of recent) {
+      const mediaText = String(message?.text || "")
+        .replace(/^(?:hi|hello|hey|ok(?:ay)?|please)\b[\s,.:;!?-]*/i, "")
+        .replace(/[.!?]+$/g, "");
+      const direct = mediaText.match(/\bplay\s+["“]?(.+?)["”]?\s+by\s+(.+?)(?:\s+(?:on|in|with|using)\s+spotify)?$/i);
+      if (direct?.[1]) {
+        return `${playReference[1][0].toUpperCase()}${playReference[1].slice(1).toLowerCase()} "${direct[1].trim()}" by ${direct[2].trim()} on Spotify`;
+      }
+      const parts = mediaText
+        .split(/\s*,\s*|\s+\band\b\s+/i)
+        .map((part) => part.trim())
+        .filter(Boolean);
+      if (parts.length >= 3 && /\bspotify\b/i.test(parts[parts.length - 1])) {
+        return `${playReference[1][0].toUpperCase()}${playReference[1].slice(1).toLowerCase()} "${parts.slice(1, -1).join(" ")}" by ${parts[0]} on Spotify`;
+      }
+    }
+  }
   if (textLooksLikeComputerUseFollowup(text) && taskState?.task) return `${taskState.task}; continue with: ${text}`;
   return text;
 }

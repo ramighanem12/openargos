@@ -12,7 +12,7 @@ rm -rf \
 
 export CSC_IDENTITY_AUTO_DISCOVERY=false
 
-if [[ "${OPENARGOS_RELEASE_SIGN:-}" != "1" && "${OPENARGOS_SKIP_LOCAL_CODESIGN_IDENTITY:-}" != "1" ]]; then
+if [[ "${OPENARGOS_RELEASE_SIGN:-}" != "1" ]]; then
   bash scripts/ensure-local-codesign-identity.sh || true
 fi
 

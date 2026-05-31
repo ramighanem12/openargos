@@ -616,6 +616,9 @@ button {
   box-sizing: border-box;
   border-radius: 10px;
   -webkit-app-region: no-drag;
+  contain: layout paint style;
+  content-visibility: auto;
+  contain-intrinsic-size: 31px;
   transition: background-color 140ms ease;
 }
 
@@ -1144,6 +1147,9 @@ h1 {
 
 .history-session {
   border-top: 1px solid rgba(255, 255, 255, 0.07);
+  contain: layout paint style;
+  content-visibility: auto;
+  contain-intrinsic-size: 69px;
 }
 
 .history-session:first-child {
