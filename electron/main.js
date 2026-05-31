@@ -5730,7 +5730,7 @@ async function createComputerUseAdapter(task = "", contextOrPlan = {}) {
   const cuaDriverAdapter = await maybeCreateCuaDriverComputerUseAdapter(task, plan, contextOrPlan);
   if (cuaDriverAdapter) return cuaDriverAdapter;
   if (getComputerUseBackend() === "cua" && plan.kind === "native" && !computerUseTaskTargetsOpenArgosApp(task)) {
-    const error = new Error("Cua Driver is selected, but OpenArgos could not create a Cua target window. Use Settings > General > Computer Use engine > Built-in fallback only if you want the older native harness.");
+    const error = new Error("Cua Driver is selected, but OpenArgos could not create a Cua target window. Use Settings > General > Computer Use engine > Native fallback if you want the native harness.");
     error.code = "CUA_DRIVER_NO_TARGET";
     throw error;
   }

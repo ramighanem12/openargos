@@ -1586,7 +1586,7 @@ function normalizeComputerUseBackend(value) {
 }
 
 function computerUseBackendLabel(backend) {
-  return normalizeComputerUseBackend(backend) === "built_in" ? "Built-in fallback" : "Cua";
+  return normalizeComputerUseBackend(backend) === "built_in" ? "Native fallback" : "Cua";
 }
 
 function renderComputerUseBackend() {

@@ -32,7 +32,7 @@ Supported voice transcription providers:
 Computer Use engines:
 
 - Cua Driver, the preferred engine for local Computer Use when installed
-- Built-in fallback, OpenArgos' older native Computer Use harness for source builds or debugging
+- Native fallback, OpenArgos' native Computer Use harness for source builds or debugging
 
 ## Requirements
 
@@ -77,7 +77,7 @@ OpenArgos will launch as a normal Mac app and also create a menu bar item.
 3. Pick an LLM model.
 4. Optional: pick a voice transcription route if you want voice input.
 5. Go to `Settings > Permissions` and configure the macOS permissions you want to use.
-6. For Computer Use, go to `Settings > General` and choose a Computer Use engine. Cua is preferred when installed; Built-in fallback is the older OpenArgos harness.
+6. For Computer Use, go to `Settings > General` and choose a Computer Use engine. Cua is preferred when installed; Native fallback is OpenArgos' native harness.
 
 You only need the permissions for the features you turn on:
 
@@ -131,7 +131,7 @@ macOS should show permissions for `Cua Driver`, not OpenArgos and not Terminal. 
 
 Then restart OpenArgos. In Settings > General, keep Computer Use engine set to Cua. The API key is not a replacement for the local driver; `cua-driver` must be installed on the Mac for Cua-powered local app control to run. If your Cua Computer Use setup requires a Cua API key, paste it under Settings > Models > Provider keys; OpenArgos stores it locally and passes it to Cua as `CUA_API_KEY`.
 
-The Built-in fallback option is not a model. It is OpenArgos' older native Computer Use harness, and it still uses your configured Computer Use model for reasoning. Use it only when Cua Driver is not installed or when debugging:
+The Native fallback option is not a model. It is OpenArgos' native Computer Use harness, and it still uses your configured Computer Use model for reasoning. Use it when Cua Driver is not installed or when debugging:
 
 ```sh
 OPENARGOS_COMPUTER_USE_CUA_DRIVER=0 npm start
