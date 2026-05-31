@@ -1491,6 +1491,12 @@ body.is-compact-mode .ambient-window-actions {
   animation: none;
 }
 
+.ambient-card.is-computer-approval .ambient-actions,
+.ambient-card.is-computer-risk-approval .ambient-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .ambient-button {
   height: 28px;
   border-radius: 8px;

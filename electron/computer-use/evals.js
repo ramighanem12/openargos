@@ -4,6 +4,7 @@ function createComputerUseEvalSuite({
   planner,
   executor,
   actionVerifier,
+  taskStore,
   surfaceRouter,
   safetyGate,
   detectCriticalAction,
@@ -34,22 +35,77 @@ function createComputerUseEvalSuite({
     const taskState = {
       taskId: "cua_1",
       task: "Download a photo of Ada Lovelace",
-      goal: "Download a photo of Ada Lovelace"
+      goal: "Download a photo of Ada Lovelace",
+      adapter: "browser",
+      background: true
     };
     const plan = planner.fallbackTurnPlan("now another photo", [], taskState);
     if (plan.route !== "computer_use") throw new Error(`Expected computer_use continuation, got ${plan.route}`);
     if (!plan.continuationTaskId) throw new Error("Expected continuation task id.");
+    if (plan.surface !== "background_browser") throw new Error(`Expected background continuation, got ${plan.surface}`);
   });
 
   add("planner routes frustrated continuation nudges with task state", () => {
     const taskState = {
       taskId: "cua_2",
-      task: "Download a photo of Melania Trump",
-      goal: "Download a photo of Melania Trump"
+      task: "Download a public company logo",
+      goal: "Download a public company logo",
+      adapter: "browser",
+      background: true
     };
     const plan = planner.fallbackTurnPlan("Are you not downloading it? I asked you to download it.", [], taskState);
     if (plan.route !== "computer_use") throw new Error(`Expected computer_use, got ${plan.route}`);
-    if (!/melania trump/i.test(plan.task)) throw new Error(`Expected task state to stay authoritative, got ${plan.task}`);
+    if (!/^Continue the previous Computer Use task/i.test(plan.task)) throw new Error(`Expected generic continuation task, got ${plan.task}`);
+    if (!plan.continuationTaskId) throw new Error("Expected continuation task id.");
+  });
+
+  add("planner routes referential continuation without literal image subject", () => {
+    const taskState = {
+      taskId: "cua_3",
+      task: "Download a photo of the previous public figure",
+      goal: "Download a photo of the previous public figure",
+      adapter: "browser",
+      background: true
+    };
+    const plan = planner.fallbackTurnPlan("now the related person", [], taskState);
+    if (plan.route !== "computer_use") throw new Error(`Expected computer_use, got ${plan.route}`);
+    if (plan.surface !== "background_browser") throw new Error(`Expected background_browser, got ${plan.surface}`);
+    if (/download a photo of the previous public figure/i.test(plan.task)) {
+      throw new Error(`Expected generic continuation task, got ${plan.task}`);
+    }
+    if (!/latest user request/i.test(plan.task)) throw new Error(`Expected latest request in continuation task, got ${plan.task}`);
+  });
+
+  add("planner skips model planner for local continuation", () => {
+    if (!planner?.shouldUseModelTurnPlanner) return;
+    const taskState = {
+      taskId: "cua_4",
+      task: "Open an account page in the user's browser",
+      goal: "Open an account page in the user's browser",
+      adapter: "native",
+      background: false
+    };
+    const localPlan = planner.fallbackTurnPlan("now check the billing tab", [], taskState);
+    if (localPlan.route !== "computer_use") throw new Error(`Expected local computer_use, got ${localPlan.route}`);
+    if (planner.shouldUseModelTurnPlanner("now check the billing tab", [], taskState, localPlan)) {
+      throw new Error("Expected local continuation to avoid an extra model planner call.");
+    }
+  });
+
+  add("planner does not swallow direct short tasks as continuations", () => {
+    const taskState = {
+      taskId: "cua_5",
+      task: "Download a photo",
+      goal: "Download a photo",
+      adapter: "browser",
+      background: true
+    };
+    const plan = planner.fallbackTurnPlan("Play Happy by Pharrell on Spotify", [], taskState);
+    if (plan.route !== "computer_use") throw new Error(`Expected computer_use, got ${plan.route}`);
+    if (/Continue the previous Computer Use task/i.test(plan.task)) {
+      throw new Error(`Expected direct task to stay direct, got ${plan.task}`);
+    }
+    if (!/happy/i.test(plan.task)) throw new Error(`Expected direct task text, got ${plan.task}`);
   });
 
   add("surface router sends public image tasks to background browser", () => {
@@ -91,6 +147,30 @@ function createComputerUseEvalSuite({
       { type: "click", x: 30, y: 30 }
     ]);
     if (batch.length !== 1) throw new Error(`Expected one click, got ${batch.length}`);
+  });
+
+  add("task store preserves execution trace across session updates", () => {
+    if (!taskStore?.createSession || !taskStore?.appendTraceEvent || !taskStore?.updateSession) return;
+    const session = taskStore.createSession({
+      task: "Download a public image",
+      metadata: { plannerReason: "eval" }
+    });
+    taskStore.appendTraceEvent(session._id, {
+      type: "action_started",
+      step: 1,
+      label: "Typed api key sk-test1234567890 into a field",
+      status: "running"
+    });
+    const updated = taskStore.updateSession({
+      sessionId: session._id,
+      status: "succeeded",
+      metadata: { steps: 1 }
+    });
+    const trace = updated?.metadata?.executionTrace;
+    if (!trace?.events?.length) throw new Error("Expected execution trace to be preserved.");
+    if (updated?.metadata?.plannerReason !== "eval") throw new Error("Expected existing metadata to be preserved.");
+    if (updated?.metadata?.steps !== 1) throw new Error("Expected new metadata to be merged.");
+    if (/sk-test/i.test(trace.events[0]?.label || "")) throw new Error("Expected trace text to redact API-key-shaped values.");
   });
 
   add("safety gate identifies delete approval", () => {

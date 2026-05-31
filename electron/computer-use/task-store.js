@@ -12,6 +12,53 @@ function createComputerUseTaskStore({
   const shorten = typeof truncateText === "function"
     ? truncateText
     : (value, maxLength = 600) => String(value || "").slice(0, maxLength);
+  const maxTraceEvents = 100;
+
+  function redactTraceText(value = "", maxLength = 260) {
+    return shorten(String(value || "")
+      .replace(/\b(?:sk|xai|sk-ant|sk-or)-[A-Za-z0-9._-]{12,}\b/g, "[redacted-key]")
+      .replace(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, "[redacted-email]")
+      .replace(/\b(?:password|token|secret|api key|apikey)\s*[:=]\s*\S+/gi, "$1=[redacted]"), maxLength);
+  }
+
+  function cleanTraceEvent(event = {}) {
+    const type = redactTraceText(event.type || "event", 80).replace(/[^a-z0-9_.:-]+/gi, "_");
+    const at = event.at || new Date().toISOString();
+    const cleaned = {
+      type,
+      at,
+      step: Number(event.step || 0) || null,
+      status: event.status ? redactTraceText(event.status, 80) : undefined,
+      surface: event.surface ? redactTraceText(event.surface, 80) : undefined,
+      actionType: event.actionType ? redactTraceText(event.actionType, 80) : undefined,
+      label: event.label ? redactTraceText(event.label, 260) : undefined,
+      target: event.target ? redactTraceText(event.target, 220) : undefined,
+      url: event.url ? redactTraceText(event.url, 260) : undefined,
+      blockerCategory: event.blockerCategory ? redactTraceText(event.blockerCategory, 80) : undefined,
+      errorMessage: event.errorMessage ? redactTraceText(event.errorMessage, 320) : undefined,
+      verified: typeof event.verified === "boolean" ? event.verified : undefined,
+      retried: typeof event.retried === "boolean" ? event.retried : undefined,
+      durationMs: Number.isFinite(Number(event.durationMs)) ? Number(event.durationMs) : undefined
+    };
+    return Object.fromEntries(Object.entries(cleaned).filter(([, value]) => value !== undefined && value !== ""));
+  }
+
+  function summarizeTraceEvents(events = []) {
+    const list = Array.isArray(events) ? events : [];
+    const counts = list.reduce((acc, event) => {
+      const type = event?.type || "event";
+      acc[type] = Number(acc[type] || 0) + 1;
+      return acc;
+    }, {});
+    const lastEvent = list.at(-1) || null;
+    const lastError = [...list].reverse().find((event) => event?.errorMessage || event?.blockerCategory) || null;
+    return {
+      eventCount: list.length,
+      counts,
+      lastEvent,
+      lastError
+    };
+  }
 
   function createSession(session = {}) {
     const now = Date.now();
@@ -36,10 +83,13 @@ function createComputerUseTaskStore({
     updateLocalStore((store) => {
       const sessions = (Array.isArray(store.computerUseSessions) ? store.computerUseSessions : []).map((session) => {
         if (session._id !== sessionId) return session;
+        const sessionMetadata = session.metadata && typeof session.metadata === "object" ? session.metadata : null;
+        const payloadMetadata = payload.metadata && typeof payload.metadata === "object" ? payload.metadata : null;
         result = {
           ...session,
           ...payload,
           _id: session._id,
+          ...(payloadMetadata && sessionMetadata ? { metadata: { ...sessionMetadata, ...payloadMetadata } } : {}),
           updatedAt: Date.now()
         };
         delete result.sessionId;
@@ -82,6 +132,39 @@ function createComputerUseTaskStore({
     return doc;
   }
 
+  function appendTraceEvent(sessionId = "", event = {}) {
+    const id = String(sessionId || "").trim();
+    if (!id) return null;
+    const traceEvent = cleanTraceEvent(event);
+    let result = null;
+    updateLocalStore((store) => {
+      const sessions = (Array.isArray(store.computerUseSessions) ? store.computerUseSessions : []).map((session) => {
+        if (session._id !== id && session.id !== id) return session;
+        const metadata = session.metadata && typeof session.metadata === "object" ? session.metadata : {};
+        const trace = metadata.executionTrace && typeof metadata.executionTrace === "object"
+          ? metadata.executionTrace
+          : { version: 1, events: [] };
+        const events = [...(Array.isArray(trace.events) ? trace.events : []), traceEvent].slice(-maxTraceEvents);
+        const executionTrace = {
+          version: 1,
+          events,
+          summary: summarizeTraceEvents(events)
+        };
+        result = {
+          ...session,
+          updatedAt: Date.now(),
+          metadata: {
+            ...metadata,
+            executionTrace
+          }
+        };
+        return result;
+      });
+      return { ...store, computerUseSessions: sessions };
+    });
+    return result;
+  }
+
   function latestForThread(threadId = "") {
     const id = String(threadId || "").trim();
     if (!id) return null;
@@ -94,6 +177,7 @@ function createComputerUseTaskStore({
     if (!session) return null;
     const metadata = session.metadata && typeof session.metadata === "object" ? session.metadata : {};
     const blocker = session.blocker || metadata.blocker || null;
+    const traceSummary = metadata.executionTrace?.summary || null;
     const stepLog = Array.isArray(metadata.stepLog) ? metadata.stepLog : [];
     const lastStep = session.lastKnownState && typeof session.lastKnownState === "object"
       ? session.lastKnownState
@@ -110,6 +194,7 @@ function createComputerUseTaskStore({
       finalText: shorten(session.finalText || "", 600),
       errorMessage: shorten(session.errorMessage || blocker?.message || "", 600),
       blocker,
+      traceSummary,
       lastKnownState: {
         step: Number(lastStep?.step || metadata.steps || 0) || null,
         label: lastStep?.label || "",
@@ -131,6 +216,7 @@ function createComputerUseTaskStore({
       taskState.finalText ? `Last result: ${taskState.finalText}` : "",
       taskState.errorMessage ? `Last blocker: ${taskState.errorMessage}` : "",
       taskState.blocker?.category ? `Blocker category: ${taskState.blocker.category}` : "",
+      taskState.traceSummary?.lastEvent?.type ? `Last trace event: ${taskState.traceSummary.lastEvent.type}` : "",
       taskState.lastKnownState?.label ? `Last step: ${taskState.lastKnownState.label} (${taskState.lastKnownState.status || "unknown"})` : ""
     ].filter(Boolean);
     return lines.join("\n");
@@ -146,6 +232,7 @@ function createComputerUseTaskStore({
       taskState.finalText ? `Last result: ${taskState.finalText}` : "",
       taskState.errorMessage ? `Last blocker: ${taskState.errorMessage}` : "",
       taskState.blocker?.category ? `Blocker category: ${taskState.blocker.category}` : "",
+      taskState.traceSummary?.lastEvent?.type ? `Last trace event: ${taskState.traceSummary.lastEvent.type}` : "",
       taskState.lastKnownState?.label ? `Last step: ${taskState.lastKnownState.label} (${taskState.lastKnownState.status || "unknown"})` : ""
     ].filter(Boolean).join("\n");
   }
@@ -155,6 +242,7 @@ function createComputerUseTaskStore({
     updateSession,
     updateTaskState,
     recordAction,
+    appendTraceEvent,
     latestForThread,
     compactText,
     promptText

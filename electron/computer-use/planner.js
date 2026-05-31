@@ -188,6 +188,26 @@ function createComputerUsePlanner({
         reason: "local fallback product feedback"
       };
     }
+    const followupLike = Boolean(textLooksLikeComputerUseFollowup?.(question));
+    const directComputerTask = !followupLike && Boolean(textLooksLikeComputerUseTask?.(question) || extractPublicImageDownloadSubject?.(question));
+    if (!directComputerTask && looksLikeContinuationPhrase(question, taskState)) {
+      const surface = taskState?.adapter
+        ? taskState.background
+          ? "background_browser"
+          : "live_mac"
+        : "none";
+      const task = buildContinuationTask(question);
+      return {
+        route: "computer_use",
+        task,
+        goal: "Continue Computer Use task",
+        surface,
+        continuationTaskId: taskState?.taskId || "",
+        clarification: "",
+        reason: "local fallback computer use continuation",
+        continued: true
+      };
+    }
     if (detectComputerUseIntent?.(question, { recentMessages, taskState })) {
       const task = resolveComputerUseTask?.(question, recentMessages, { taskState }) || String(question || "").trim();
       return {
@@ -197,7 +217,8 @@ function createComputerUsePlanner({
         surface: "none",
         continuationTaskId: taskState?.taskId || "",
         clarification: "",
-        reason: "local fallback computer use intent"
+        reason: "local fallback computer use intent",
+        continued: Boolean(taskState?.taskId && looksLikeContinuationPhrase(question, taskState))
       };
     }
     return {
@@ -245,6 +266,7 @@ function createComputerUsePlanner({
   function shouldUseModelTurnPlanner(question, recentMessages = [], taskState = null, localPlan = null) {
     if (!question || rejectsComputerUseIntent?.(question)) return false;
     if (localPlan?.route === "memory" || localPlan?.route === "settings") return false;
+    if (localPlan?.route === "computer_use" && localPlan.continued) return false;
     if (!taskState?.taskId && !hasRecentComputerUseContext?.(recentMessages)) return false;
     if (localPlan?.route === "chat") {
       return looksLikeContinuationPhrase(question, taskState);
@@ -256,6 +278,13 @@ function createComputerUsePlanner({
     return false;
   }
 
+  function buildContinuationTask(question = "") {
+    const latest = truncateText(String(question || "").replace(/\s+/g, " ").trim(), 260);
+    return latest
+      ? `Continue the previous Computer Use task using the latest user request: ${latest}`
+      : "Continue the previous Computer Use task.";
+  }
+
   return {
     formatRoutingMessage,
     shouldResolveFollowupWithModel,
@@ -263,6 +292,7 @@ function createComputerUsePlanner({
     buildTurnPrompt,
     normalizeTurnPlan,
     fallbackTurnPlan,
+    buildContinuationTask,
     looksLikeContinuationPhrase,
     shouldUseModelTurnPlanner
   };

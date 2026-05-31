@@ -237,6 +237,7 @@ const computerUseSessionRunner = createComputerUseSessionRunner({
   updateComputerUseUserActionSteps,
   localUpdateComputerUseTaskState,
   localRecordComputerUseAction,
+  localAppendComputerUseTraceEvent,
   computerUseCancelledError,
   waitForComputerUseCriticalApproval,
   computerActionStatus,
@@ -5055,6 +5056,10 @@ function localUpdateComputerUseTaskState(approval = {}, stepEntry = {}, status =
 
 function localRecordComputerUseAction(payload = {}) {
   return computerUseTaskStore.recordAction(payload);
+}
+
+function localAppendComputerUseTraceEvent(sessionId = "", event = {}) {
+  return computerUseTaskStore.appendTraceEvent(sessionId, event);
 }
 
 function recoverInterruptedComputerUseSessions() {

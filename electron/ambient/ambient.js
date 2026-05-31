@@ -2406,6 +2406,8 @@ function showComputerUseApproval(computerUse) {
   pendingComputerUseApproval = computerUse || null;
   card?.classList.remove("is-computer-risk-approval");
   card?.classList.add("is-computer-approval");
+  card?.classList.remove("bottom-controls-waiting", "bottom-controls-body-locked");
+  card?.style.removeProperty("--ambient-bottom-reveal-body-height");
   const shouldPreserveBody = Boolean(followup && !followup.hidden);
   const layoutBatch = shouldPreserveBody ? beginAmbientLayoutBatch() : null;
   if (shouldPreserveBody) lockBottomControlsBodyHeight();
@@ -2451,6 +2453,8 @@ function showComputerUseCriticalApproval(payload = {}) {
   };
   card?.classList.remove("is-computer-approval");
   card?.classList.add("is-computer-risk-approval");
+  card?.classList.remove("bottom-controls-waiting", "bottom-controls-body-locked");
+  card?.style.removeProperty("--ambient-bottom-reveal-body-height");
   const title = payload.title || "Approve action?";
   const message = payload.message || "OpenArgos is about to perform an action that may be hard to undo.";
   appendImmediateAssistantMessage(`**${title}**\n\n${message}`, { feedback: false });

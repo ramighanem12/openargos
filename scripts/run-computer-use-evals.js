@@ -7,6 +7,7 @@ const { createComputerUseExecutor } = require("../electron/computer-use/executor
 const { createComputerUsePlanner } = require("../electron/computer-use/planner");
 const { createComputerUseSafetyGate } = require("../electron/computer-use/safety-gate");
 const { createComputerUseSurfaceRouter } = require("../electron/computer-use/surface-router");
+const { createComputerUseTaskStore } = require("../electron/computer-use/task-store");
 
 function normalizeComputerIntentText(value = "") {
   return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
@@ -111,6 +112,20 @@ function blockedBackgroundBrowserActionReason({ task = "", target = null } = {})
 }
 
 async function main() {
+  let localStore = {};
+  const taskStore = createComputerUseTaskStore({
+    readLocalStore: () => localStore,
+    updateLocalStore: (mutator) => {
+      localStore = mutator({
+        computerUseSessions: [],
+        computerUseActions: [],
+        ...localStore
+      }) || localStore;
+      return localStore;
+    },
+    localDocId: (prefix) => `${prefix}_eval_${Math.random().toString(16).slice(2)}`,
+    truncateText
+  });
   const planner = createComputerUsePlanner({
     truncateText,
     normalizeComputerIntentText,
@@ -156,6 +171,7 @@ async function main() {
     planner,
     executor,
     actionVerifier,
+    taskStore,
     surfaceRouter,
     safetyGate,
     detectCriticalAction,

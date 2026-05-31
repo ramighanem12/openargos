@@ -51,6 +51,7 @@ function createComputerUseSessionRunner(deps = {}) {
     updateComputerUseUserActionSteps,
     localUpdateComputerUseTaskState,
     localRecordComputerUseAction,
+    localAppendComputerUseTraceEvent,
     computerUseCancelledError,
     waitForComputerUseCriticalApproval,
     computerActionStatus,
@@ -83,6 +84,14 @@ function createComputerUseSessionRunner(deps = {}) {
     sendStream("status", { text });
     updateComputerUseOverlayStatus(text);
   };
+  const appendTrace = (type, payload = {}) => {
+    if (typeof localAppendComputerUseTraceEvent !== "function") return null;
+    return localAppendComputerUseTraceEvent(approval.sessionId, {
+      type,
+      at: new Date().toISOString(),
+      ...payload
+    });
+  };
 
   const computerUsePolicy = getComputerUseRuntimePolicy();
   const unavailableMessage = computerUseUnavailableMessage(computerUsePolicy);
@@ -106,6 +115,12 @@ function createComputerUseSessionRunner(deps = {}) {
     status: "running",
     adapter: adapter.kind,
     background: Boolean(adapter.background)
+  });
+  appendTrace("session_started", {
+    status: "running",
+    surface: adapter.background ? "background_browser" : "live_mac",
+    label: approval.goal || approval.task || "",
+    actionType: "session"
   });
   void logModelUsageEvent({
     provider: computerUseProvider,
@@ -139,6 +154,12 @@ function createComputerUseSessionRunner(deps = {}) {
 
   try {
     await adapter.prepare();
+    appendTrace("adapter_prepared", {
+      status: "succeeded",
+      surface: adapter.background ? "background_browser" : "live_mac",
+      label: adapter.label || adapter.kind || "Computer Use surface",
+      url: adapter.initialUrl || ""
+    });
     const initialIntercepts = await runAdapterInterceptors(adapter, null, {
       phase: "initial",
       task: approval.task
@@ -168,6 +189,12 @@ function createComputerUseSessionRunner(deps = {}) {
     if (fastPath?.completed) {
       finalText = fastPath.finalText || "Done. I finished that task.";
       step = computerUseSteps.length;
+      appendTrace("fast_path_completed", {
+        status: "succeeded",
+        surface: adapter.background ? "background_browser" : "live_mac",
+        label: finalText,
+        actionType: "fast_path"
+      });
     }
 
     if (!finalText) {
@@ -415,6 +442,16 @@ function createComputerUseSessionRunner(deps = {}) {
               reason: blockedActionReason,
               action: actionLogDetails
             });
+            appendTrace("action_skipped", {
+              step,
+              status: "skipped",
+              surface: stepEntry.surface,
+              actionType: stepEntry.actionType,
+              label: stepEntry.label,
+              target: stepEntry.target,
+              url: stepEntry.url,
+              errorMessage: blockedActionReason
+            });
             localRecordComputerUseAction({
               sessionId: approval.sessionId,
               step,
@@ -451,6 +488,15 @@ function createComputerUseSessionRunner(deps = {}) {
             windowTitle: stepEntry.windowTitle,
             action: actionLogDetails
           });
+          appendTrace("action_started", {
+            step,
+            status: stepEntry.status,
+            surface: stepEntry.surface,
+            actionType: stepEntry.actionType,
+            label: stepEntry.label,
+            target: stepEntry.target,
+            url: stepEntry.url
+          });
           localRecordComputerUseAction({
             sessionId: approval.sessionId,
             step,
@@ -476,6 +522,15 @@ function createComputerUseSessionRunner(deps = {}) {
                 label: stepEntry.label,
                 action: actionLogDetails
               });
+              appendTrace("critical_approval_pending", {
+                step,
+                status: "waiting_approval",
+                surface: stepEntry.surface,
+                actionType: stepEntry.actionType,
+                label: criticalRisk.actionLabel || stepEntry.label,
+                target: stepEntry.target,
+                blockerCategory: criticalRisk.category
+              });
               const decision = await waitForComputerUseCriticalApproval({
                 sendStream,
                 sendStatus,
@@ -491,6 +546,15 @@ function createComputerUseSessionRunner(deps = {}) {
                 sendStream("computer_action", { action: stepEntry });
                 void updateComputerUseUserActionSteps(approval, computerUseSteps);
                 localUpdateComputerUseTaskState(approval, stepEntry, "cancelled");
+                appendTrace("critical_approval_cancelled", {
+                  step,
+                  status: "cancelled",
+                  surface: stepEntry.surface,
+                  actionType: stepEntry.actionType,
+                  label: criticalRisk.actionLabel || stepEntry.label,
+                  blockerCategory: criticalRisk.category,
+                  errorMessage: stepEntry.errorMessage
+                });
                 throw computerUseCancelledError();
               }
               if (decision.decision === "not_allow") {
@@ -529,6 +593,15 @@ function createComputerUseSessionRunner(deps = {}) {
                   category: criticalRisk.category,
                   label: criticalRisk.actionLabel || stepEntry.label
                 });
+                appendTrace("critical_approval_denied", {
+                  step,
+                  status: "denied",
+                  surface: stepEntry.surface,
+                  actionType: stepEntry.actionType,
+                  label: criticalRisk.actionLabel || stepEntry.label,
+                  blockerCategory: criticalRisk.category,
+                  errorMessage: stepEntry.errorMessage
+                });
                 break;
               }
               if (pendingSafetyChecks.length && !safetyApprovalHandled) {
@@ -548,6 +621,14 @@ function createComputerUseSessionRunner(deps = {}) {
                 step,
                 category: criticalRisk.category,
                 label: criticalRisk.actionLabel || stepEntry.label
+              });
+              appendTrace("critical_approval_approved", {
+                step,
+                status: "approved",
+                surface: stepEntry.surface,
+                actionType: stepEntry.actionType,
+                label: criticalRisk.actionLabel || stepEntry.label,
+                blockerCategory: criticalRisk.category
               });
             }
             const actionStartedAt = Date.now();
@@ -584,6 +665,18 @@ function createComputerUseSessionRunner(deps = {}) {
               postActionWaitMs,
               actionDurationMs: Date.now() - actionStartedAt
             });
+            appendTrace("action_succeeded", {
+              step,
+              status: "succeeded",
+              surface: stepEntry.surface,
+              actionType: stepEntry.actionType,
+              label: stepEntry.label,
+              target: stepEntry.target,
+              url: stepEntry.url,
+              verified: Boolean(executionResult?.verified),
+              retried: Boolean(executionResult?.retried),
+              durationMs: Date.now() - actionStartedAt
+            });
             localRecordComputerUseAction({
               sessionId: approval.sessionId,
               step,
@@ -616,6 +709,16 @@ function createComputerUseSessionRunner(deps = {}) {
               step,
               label: stepEntry.label,
               action: actionLogDetails,
+              errorMessage: stepEntry.errorMessage
+            });
+            appendTrace("action_failed", {
+              step,
+              status: stepEntry.status,
+              surface: stepEntry.surface,
+              actionType: stepEntry.actionType,
+              label: stepEntry.label,
+              target: stepEntry.target,
+              url: stepEntry.url,
               errorMessage: stepEntry.errorMessage
             });
             localRecordComputerUseAction({
@@ -659,6 +762,13 @@ function createComputerUseSessionRunner(deps = {}) {
             adapter: adapter.kind,
             consecutiveNoProgressActions,
             actionTypes: executedActions.map(normalizeComputerActionType)
+          });
+          appendTrace("no_visual_progress", {
+            step,
+            status: "warning",
+            surface: adapter.background ? "background_browser" : "live_mac",
+            actionType: executedActions.map(normalizeComputerActionType).join(","),
+            label: "No verified visual progress after action batch"
           });
           if (consecutiveNoProgressActions > computerUseNoProgressActionLimit) {
             throw new Error("Computer Use did not produce visible progress after several actions, so I stopped before it kept operating blindly.");
@@ -777,6 +887,12 @@ function createComputerUseSessionRunner(deps = {}) {
         savedDownloads
       }
     });
+    appendTrace("session_succeeded", {
+      status: "succeeded",
+      surface: adapter.background ? "background_browser" : "live_mac",
+      label: finalText,
+      durationMs: Date.now() - startedAt
+    });
     void updateComputerUseUserActionSteps(approval, computerUseSteps);
     localUpdateComputerUseSession({
       sessionId: approval.sessionId,
@@ -833,6 +949,12 @@ function createComputerUseSessionRunner(deps = {}) {
           stoppedAt: new Date().toISOString()
         }
       });
+      appendTrace("session_cancelled", {
+        status: "cancelled",
+        surface: adapter.background ? "background_browser" : "live_mac",
+        label: "Computer Use stopped",
+        durationMs: Date.now() - startedAt
+      });
       void updateComputerUseUserActionSteps(approval, computerUseSteps.map((item) => (
         item.status === "running" ? { ...item, status: "cancelled" } : item
       )));
@@ -873,6 +995,14 @@ function createComputerUseSessionRunner(deps = {}) {
       blocker,
       errorMessage: errorText,
       ...diagnosticErrorDetails(error)
+    });
+    appendTrace("session_failed", {
+      status: "failed",
+      surface: adapter.background ? "background_browser" : "live_mac",
+      label: errorText,
+      blockerCategory: blocker.category,
+      errorMessage: errorText,
+      durationMs: Date.now() - startedAt
     });
     localUpdateComputerUseSession({
       sessionId: approval.sessionId,
