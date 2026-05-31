@@ -15,6 +15,7 @@ function createComputerUsePlanner({
   rejectsComputerUseIntent,
   textLooksLikeComputerUseTask,
   textLooksLikeComputerUseFollowup,
+  textLooksLikeComputerUseCorrection,
   extractPublicImageDownloadSubject,
   resolveImageDownloadFollowupTask,
   hasRecentComputerUseContext,
@@ -177,6 +178,17 @@ function createComputerUsePlanner({
         reason: "local fallback settings status"
       };
     }
+    if (textLooksLikeComputerUseCorrection?.(question)) {
+      return {
+        route: "chat",
+        task: "",
+        goal: "",
+        surface: "none",
+        continuationTaskId: "",
+        clarification: "",
+        reason: "local fallback correction"
+      };
+    }
     if (looksLikeProductFeedbackQuestion(question, taskState)) {
       return {
         route: "chat",
@@ -250,6 +262,7 @@ function createComputerUsePlanner({
     if (!taskState?.task && !taskState?.goal) return false;
     const normalized = normalizeIntent(question);
     if (!normalized || normalized.length > 180 || rejectsComputerUseIntent?.(normalized)) return false;
+    if (textLooksLikeComputerUseCorrection?.(normalized)) return false;
     if (/^(?:hi|hello|hey|thanks|thank you|cool|nice|ok|okay)\b/.test(normalized)) return false;
     const asksAboutBehavior = /^(?:why|how|what|where|when)\b/.test(normalized) &&
       /\b(?:you|it|that|this|app|openargos|argos|computer\s+use|browser|screen|model|route|planning)\b/.test(normalized);

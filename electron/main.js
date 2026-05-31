@@ -143,6 +143,7 @@ const computerUsePlanner = createComputerUsePlanner({
   rejectsComputerUseIntent,
   textLooksLikeComputerUseTask,
   textLooksLikeComputerUseFollowup,
+  textLooksLikeComputerUseCorrection,
   extractPublicImageDownloadSubject,
   resolveImageDownloadFollowupTask,
   hasRecentComputerUseContext,
@@ -1038,6 +1039,11 @@ function normalizeLocalModelPolicy(policy = {}) {
 function normalizeComputerIntentText(value) {
   return String(value || "")
     .toLowerCase()
+    .replace(/\bur\b/g, "you are")
+    .replace(/\bu\b/g, "you")
+    .replace(/\bdownloa\b/g, "download")
+    .replace(/\bspotufy\b/g, "spotify")
+    .replace(/\bcomptuer\b/g, "computer")
     .replace(/\bdrop[\s-]+down\b/g, "dropdown")
     .replace(/\bre[\s-]+order\b/g, "reorder")
     .replace(/\bgo\s+in\b/g, "navigate")
@@ -1055,6 +1061,15 @@ function rejectsComputerUseIntent(value) {
     || /\b(?:answer|respond|reply)\s+(?:here|normally|in\s+chat)\b.{0,80}\b(?:without|not)\s+(?:using|use)\s+(?:my\s+|the\s+|a\s+)?(?:mac|computer|screen)\b/.test(normalized);
 }
 
+function textLooksLikeComputerUseCorrection(value = "") {
+  const normalized = normalizeComputerIntentText(value);
+  if (!normalized) return false;
+  const hasExplicitActionRequest = /\b(?:download|save|get|grab|open|go to|navigate|search|find|click|type|scroll|delete|remove|play|pause|resume|stop|skip|queue|order|reorder|send|try again|redo|do it|do that|use computer|use the computer|use my computer|computer use)\b/.test(normalized);
+  if (hasExplicitActionRequest) return false;
+  return /^(?:no|nah|nope)[\s,]*(?:you\s+are|you'?re|youre|you)?\s*(?:not|wrong)?\b/.test(normalized) ||
+    /^(?:wrong|incorrect|not right|that'?s wrong|that's not right|that is wrong|that is not right|what\??|wtf|huh|come on|are you serious|seriously)\b/.test(normalized);
+}
+
 function textLooksLikeComputerUseStartOnly(value) {
   const normalized = normalizeComputerIntentText(value);
   if (!normalized || rejectsComputerUseIntent(normalized)) return false;
@@ -1065,7 +1080,7 @@ function textLooksLikeComputerUseStartOnly(value) {
 
 function textLooksLikeComputerUseTask(value, { requireAsk = true } = {}) {
   const normalized = normalizeComputerIntentText(value);
-  if (!normalized || rejectsComputerUseIntent(normalized)) return false;
+  if (!normalized || rejectsComputerUseIntent(normalized) || textLooksLikeComputerUseCorrection(normalized)) return false;
   if (/\b(?:take|grab)\s+(?:control|over)\s+(?:of\s+)?(?:my\s+|the\s+|a\s+)?(?:mac|computer|screen)\b/.test(normalized)) return true;
   if (/\B@computer\b|\b(use|control|operate)\s+(?:my\s+|the\s+|a\s+)?(mac|computer|screen)\b/.test(normalized)) return true;
   if (/\b(?:go|look|search|browse|find|check|pull)\s+(?:on|using|with)\s+(?:my\s+|the\s+|a\s+)?(?:mac|computer|browser|chrome)\b/.test(normalized)) return true;
@@ -1098,7 +1113,7 @@ function textLooksLikeComputerUseTask(value, { requireAsk = true } = {}) {
 
 function textLooksLikeComputerUseFollowup(value) {
   const normalized = normalizeComputerIntentText(value);
-  if (!normalized || rejectsComputerUseIntent(normalized)) return false;
+  if (!normalized || rejectsComputerUseIntent(normalized) || textLooksLikeComputerUseCorrection(normalized)) return false;
   return /\b(yes|yeah|yep|go ahead|do it|do that|redo it|redo|rerun|run it again|do it again|try it again|can you do it|could you do it|are you going to do it|will you do it|you gonna do it|please do|for me|that's what i'm asking|that is what i'm asking|i asked you to|i told you to|are you not (?:downloading|saving|opening|playing|doing) it|why are you not using it|why can'?t you use|why can't you use|supposed to|try now|try again|retry|again|now that (?:it'?s|it is) on|i turned it on|it'?s on|computer use is on|use (?:the\s+|a\s+)?computer|use (?:the\s+)?mac|use computer use|start computer use|make (?:the\s+)?change|the first one|first one|the second one|second one|that one|dd|door\s*dash|doordash)\b/.test(normalized) ||
     /^(?:that|this|ok|okay|sure|please|pls|try|again|redo|rerun|now)$/.test(normalized);
 }
@@ -5846,7 +5861,7 @@ function memorySaveBlockedResponse(intent = {}) {
 
 function detectComputerUseIntent(question, { recentMessages = [], taskState = null } = {}) {
   const normalized = normalizeComputerIntentText(question);
-  if (!normalized || rejectsComputerUseIntent(normalized)) return false;
+  if (!normalized || rejectsComputerUseIntent(normalized) || textLooksLikeComputerUseCorrection(normalized)) return false;
   if (textLooksLikeComputerUseTask(normalized)) return true;
   if (resolveImageDownloadFollowupTask(question, recentMessages)) return true;
 
@@ -7722,12 +7737,10 @@ function createWindow(page) {
     title: "",
     icon: appIconPath,
     skipTaskbar: false,
-    backgroundColor: "#00000000",
-    transparent: true,
+    backgroundColor: "#151514",
+    transparent: false,
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 22, y: 16 },
-    vibrancy: "fullscreen-ui",
-    visualEffectState: "active",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
