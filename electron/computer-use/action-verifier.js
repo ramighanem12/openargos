@@ -164,6 +164,10 @@ function createComputerUseActionVerifier({
     if (firstType === "click" || firstType === "double_click") {
       const secondType = normalizeComputerActionType(meaningful[1]);
       if (secondType === "type") return meaningful.slice(0, 2);
+      const clickSelectTypeSequence = secondType === "keypress" &&
+        isComputerKeypressAction(meaningful[1], (keys) => keys.includes("A") && (keys.includes("COMMAND") || keys.includes("CONTROL"))) &&
+        normalizeComputerActionType(meaningful[2]) === "type";
+      if (clickSelectTypeSequence) return meaningful.slice(0, 3);
       return meaningful.slice(0, 1);
     }
     if (firstType === "scroll") return meaningful.slice(0, 1);

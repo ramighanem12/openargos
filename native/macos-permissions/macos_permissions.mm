@@ -166,6 +166,16 @@ std::string AXStringAttribute(AXUIElementRef element, CFStringRef attribute) {
   return result;
 }
 
+bool AXRoleLooksTextEditable(const std::string &role) {
+  static const std::unordered_set<std::string> editableRoles = {
+    "AXTextField",
+    "AXTextArea",
+    "AXSearchField",
+    "AXComboBox"
+  };
+  return editableRoles.find(role) != editableRoles.end();
+}
+
 bool GetNamedDouble(napi_env env, napi_value object, const char *name, double *out) {
   bool has = false;
   napi_has_named_property(env, object, name, &has);
@@ -1247,6 +1257,23 @@ napi_value SetFocusedValueIfEmpty(napi_env env, napi_callback_info info) {
   SetBool(env, result, "found", true);
   const std::string role = AXStringAttribute(focused, kAXRoleAttribute);
   SetString(env, result, "role", role.c_str());
+  if (!AXRoleLooksTextEditable(role)) {
+    SetBool(env, result, "skipped", true);
+    SetString(env, result, "reason", "focused role is not text editable");
+    CFRelease(focused);
+    [string release];
+    return result;
+  }
+  Boolean valueSettable = false;
+  AXError settableError = AXUIElementIsAttributeSettable(focused, kAXValueAttribute, &valueSettable);
+  if (settableError != kAXErrorSuccess || !valueSettable) {
+    SetBool(env, result, "skipped", true);
+    SetString(env, result, "reason", "focused value is not settable");
+    SetInt(env, result, "errorCode", static_cast<int32_t>(settableError));
+    CFRelease(focused);
+    [string release];
+    return result;
+  }
   const std::string currentValue = AXStringAttribute(focused, kAXValueAttribute);
   SetInt(env, result, "previousLength", static_cast<int32_t>(currentValue.size()));
   if (!currentValue.empty()) {

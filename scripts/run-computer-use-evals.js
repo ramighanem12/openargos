@@ -184,7 +184,8 @@ async function main() {
   const actionVerifier = createComputerUseActionVerifier({
     normalizeComputerActionType: (action) => String(action?.type || "").toLowerCase().replace(/-/g, "_"),
     normalizedComputerActionKeys: (action) => (Array.isArray(action.keys) ? action.keys : [action.key || action.text].filter(Boolean))
-      .map((key) => String(key || "").toUpperCase().replace("ENTER", "RETURN"))
+      .flatMap((key) => String(key || "").split("+"))
+      .map((key) => String(key || "").toUpperCase().replace("ENTER", "RETURN").replace("CMD", "COMMAND"))
       .filter(Boolean),
     fastMode: true
   });

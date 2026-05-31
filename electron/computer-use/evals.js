@@ -202,6 +202,18 @@ function createComputerUseEvalSuite({
     if (batch.length !== 3) throw new Error(`Expected 3-action navigation batch, got ${batch.length}`);
   });
 
+  add("action verifier batches one focused text replacement", () => {
+    if (!actionVerifier?.safeActionBatch) return;
+    const actions = [
+      { type: "click", x: 200, y: 120 },
+      { type: "keypress", keys: ["COMMAND", "A"] },
+      { type: "type", text: "Replacement text" },
+      { type: "click", x: 200, y: 240 }
+    ];
+    const batch = actionVerifier.safeActionBatch(actions);
+    if (batch.length !== 3) throw new Error(`Expected focused replacement batch, got ${batch.length}`);
+  });
+
   add("action verifier does not batch unrelated clicks", () => {
     if (!actionVerifier?.safeActionBatch) return;
     const batch = actionVerifier.safeActionBatch([
