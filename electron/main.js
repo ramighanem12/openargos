@@ -2961,7 +2961,7 @@ function computerCaptureContextText(capture) {
     focus.browserTitle ? `Browser title: ${focus.browserTitle}` : "",
     focus.browserUrl ? `Browser URL: ${focus.browserUrl}` : "",
     focus.virtualAddressBarActive ? `Background browser address bar text: ${focus.virtualAddressText || "(empty)"}` : "",
-    focus.pageSummary ? `Background browser page map:\n${focus.pageSummary}` : "",
+    focus.pageSummary ? `${capture?.adapter?.kind === "cdp_browser" ? "Browser DOM map" : "Background browser page map"}:\n${focus.pageSummary}` : "",
     Array.isArray(focus.savedDownloads) && focus.savedDownloads.length
       ? `Background browser saved downloads:\n${focus.savedDownloads.map((item) => item?.path || "").filter(Boolean).join("\n")}`
       : "",
@@ -5134,10 +5134,88 @@ async function cdpPageSnapshot(client) {
     expression: `
       (() => {
         const clean = (value, limit = 5000) => String(value || "").replace(/\\s+/g, " ").trim().slice(0, limit);
+        const rectFor = (element) => {
+          const rect = element.getBoundingClientRect();
+          return {
+            x: Math.round(rect.x),
+            y: Math.round(rect.y),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height)
+          };
+        };
+        const isVisible = (element) => {
+          if (!element || !element.getBoundingClientRect) return false;
+          const rect = element.getBoundingClientRect();
+          if (rect.width < 2 || rect.height < 2) return false;
+          if (rect.bottom < 0 || rect.right < 0 || rect.top > window.innerHeight || rect.left > window.innerWidth) return false;
+          const style = window.getComputedStyle(element);
+          return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity || 1) > 0.01;
+        };
+        const labelFor = (element) => clean(
+          element.getAttribute("aria-label") ||
+          element.getAttribute("placeholder") ||
+          element.getAttribute("title") ||
+          element.getAttribute("alt") ||
+          element.innerText ||
+          element.value ||
+          element.textContent ||
+          "",
+          180
+        );
+        const roleFor = (element) => clean(
+          element.getAttribute("role") ||
+          (element.isContentEditable ? "contenteditable" : "") ||
+          (element.tagName || "").toLowerCase(),
+          48
+        );
+        const selector = [
+          "input",
+          "textarea",
+          "[contenteditable='true']",
+          "[contenteditable='plaintext-only']",
+          "[role='textbox']",
+          "a[href]",
+          "button",
+          "select",
+          "summary",
+          "[role='button']",
+          "[role='link']",
+          "[role='menuitem']",
+          "[tabindex]:not([tabindex='-1'])"
+        ].join(",");
+        const controls = Array.from(document.querySelectorAll(selector))
+          .filter(isVisible)
+          .slice(0, 90)
+          .map((element, index) => ({
+            index: index + 1,
+            role: roleFor(element),
+            label: labelFor(element),
+            type: clean(element.getAttribute("type") || "", 40),
+            placeholder: clean(element.getAttribute("placeholder") || "", 120),
+            editable: Boolean(
+              element.isContentEditable ||
+              element.getAttribute("contenteditable") === "true" ||
+              element.getAttribute("contenteditable") === "plaintext-only" ||
+              element.getAttribute("role") === "textbox" ||
+              /^(input|textarea)$/i.test(element.tagName || "")
+            ),
+            rect: rectFor(element)
+          }))
+          .filter((item) => item.label || item.placeholder || item.editable);
+        const active = document.activeElement && document.activeElement !== document.body
+          ? {
+              role: roleFor(document.activeElement),
+              label: labelFor(document.activeElement),
+              editable: Boolean(document.activeElement.isContentEditable || document.activeElement.getAttribute("role") === "textbox" || /^(input|textarea)$/i.test(document.activeElement.tagName || "")),
+              rect: rectFor(document.activeElement)
+            }
+          : null;
         return {
           title: document.title || "",
           url: location.href || "",
           text: clean(document.body && document.body.innerText ? document.body.innerText : ""),
+          active,
+          controls,
           viewport: {
             width: Math.round(window.innerWidth || 0),
             height: Math.round(window.innerHeight || 0),
@@ -5150,6 +5228,26 @@ async function cdpPageSnapshot(client) {
   return result?.result?.value || {};
 }
 
+function formatCdpPageSnapshot(snapshot = {}) {
+  const lines = [];
+  const active = snapshot.active;
+  if (active?.label || active?.role) {
+    lines.push(`Focused browser element: ${sanitizeBackgroundBrowserText(active.label || active.role, 140)}${active.editable ? " (editable)" : ""}`);
+  }
+  const controls = Array.isArray(snapshot.controls) ? snapshot.controls.slice(0, 36) : [];
+  if (controls.length) {
+    lines.push("Visible browser controls:");
+    controls.forEach((item) => {
+      const label = sanitizeBackgroundBrowserText(item.label || item.placeholder || item.role, 140);
+      if (!label) return;
+      const rect = item.rect ? ` @ ${item.rect.x},${item.rect.y} ${item.rect.width}x${item.rect.height}` : "";
+      const editable = item.editable ? " editable" : "";
+      lines.push(`${item.index}. ${item.role || "control"}${editable}: ${label}${rect}`);
+    });
+  }
+  return lines.join("\n");
+}
+
 async function cdpClickDomTarget(client, point = {}, { doubleClick = false } = {}) {
   const result = await client.call("Runtime.evaluate", {
     returnByValue: true,
@@ -5160,6 +5258,7 @@ async function cdpClickDomTarget(client, point = {}, { doubleClick = false } = {
         const selector = [
           "a[href]", "button", "input", "textarea", "select", "summary",
           "[role='button']", "[role='link']", "[role='menuitem']",
+          "[role='textbox']", "[contenteditable='true']", "[contenteditable='plaintext-only']",
           "[tabindex]:not([tabindex='-1'])"
         ].join(",");
         const isVisible = (element) => {
@@ -5179,6 +5278,16 @@ async function cdpClickDomTarget(client, point = {}, { doubleClick = false } = {
         const label = clean(target.getAttribute("aria-label") || target.getAttribute("title") || target.getAttribute("alt") || target.value || target.innerText || target.textContent || "");
         if (!target.matches(selector) && typeof target.click !== "function") return { ok: false, reason: "not_clickable", tag, role, label };
         try { target.focus?.({ preventScroll: true }); } catch {}
+        if (target.isContentEditable || target.getAttribute("contenteditable") === "true" || target.getAttribute("contenteditable") === "plaintext-only" || target.getAttribute("role") === "textbox" || tag === "input" || tag === "textarea") {
+          try {
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(target);
+            range.collapse(false);
+            selection.removeAllRanges();
+            selection.addRange(range);
+          } catch {}
+        }
         try {
           const eventOptions = { bubbles: true, cancelable: true, view: window, clientX: point.x, clientY: point.y };
           target.dispatchEvent(new MouseEvent("mousemove", eventOptions));
@@ -5207,7 +5316,7 @@ async function cdpTypeIntoActiveElement(client, text = "") {
         const tag = (element.tagName || "").toLowerCase();
         const role = element.getAttribute("role") || tag;
         const isTextInput = tag === "textarea" || (tag === "input" && !/^(button|submit|reset|checkbox|radio|file|image|range|color)$/i.test(element.type || ""));
-        const isEditable = element.isContentEditable || element.getAttribute("contenteditable") === "true";
+        const isEditable = element.isContentEditable || element.getAttribute("contenteditable") === "true" || element.getAttribute("contenteditable") === "plaintext-only" || element.getAttribute("role") === "textbox";
         if (!isTextInput && !isEditable) return { ok: false, reason: "active_element_not_editable", tag, role };
         try { element.focus?.({ preventScroll: true }); } catch {}
         if (isTextInput) {
@@ -5218,6 +5327,10 @@ async function cdpTypeIntoActiveElement(client, text = "") {
           element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
           element.dispatchEvent(new Event("change", { bubbles: true }));
           return { ok: true, tag, role, mode: "value" };
+        }
+        if (document.execCommand && document.execCommand("insertText", false, text)) {
+          element.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText", data: text }));
+          return { ok: true, tag, role, mode: "execCommand" };
         }
         const selection = window.getSelection();
         if (selection && selection.rangeCount) {
@@ -5292,12 +5405,14 @@ function createCdpBrowserComputerUseAdapter(task = "", plan = {}, target = null)
     },
     async getFocusContext() {
       const snapshot = await cdpPageSnapshot(client);
+      const pageSummary = formatCdpPageSnapshot(snapshot);
       return {
         activeApp: "Browser DevTools",
         activeWindowTitle: snapshot.title || snapshot.url || "Browser tab",
         browserTitle: snapshot.title || "",
         browserUrl: snapshot.url || "",
         viewport: snapshot.viewport || computerUseBrowserViewport,
+        pageSummary,
         visibleText: snapshot.text || "",
         windowFrame: {
           x: 0,
@@ -5491,7 +5606,7 @@ function createCdpBrowserComputerUseAdapter(task = "", plan = {}, target = null)
 async function maybeCreateCdpBrowserComputerUseAdapter(task = "", plan = {}, context = {}) {
   if (!shouldUseCdpBrowserAdapter(task, plan, context)) return null;
   const targets = await discoverComputerUseDevToolsTargets();
-  const target = selectComputerUseDevToolsTarget(targets, context);
+      const target = selectComputerUseDevToolsTarget(targets, context);
   if (!target) return null;
   writeAmbientLog("computer_use_cdp_target_selected", {
     activeApp: context.activeApp || null,
@@ -5559,6 +5674,7 @@ function computerUseSystemInstructions(adapter = {}) {
     "For OpenArgos app tasks, operate the OpenArgos desktop UI itself. If the OpenArgos ambient card is visible or redacted, ignore it; it is only the control surface where the user asked.",
     `OpenArgos local model rules: the app uses local provider keys only. Current model catalog: ${modelCatalogInstructionText()}.`,
     "If the task asks about a dropdown's options, open the dropdown first and inspect the expanded menu. The selected value alone is not the list of available options.",
+    "For email, message, post, or reply drafting tasks, treat subject/title and body as separate fields. Never put a line like \"Subject:\" in the body as a substitute for filling the subject field. Fill a subject/title only after focusing a visible subject/title field, then fill the body only after focusing a visible message/body editor. If you cannot identify those fields reliably, stop and state the exact blocker instead of typing into a generic group or page area. Do not send the email/message unless the user explicitly asked to send it and the critical approval flow allows it.",
     "Speed policy: act like a fast but careful expert operator. Prefer keyboard shortcuts and direct typing over mouse movement when the target is clear. Spend reasoning only on choosing the next reliable UI action.",
     "Batching policy: batch only safe local sequences, such as Command+L then typing a URL, or click into a clearly visible text field then type. Do not batch across app switches, menu openings, page loads, dialog changes, destructive actions, or multiple unrelated clicks.",
     "Do not ask for a fresh screenshot immediately after the initial screenshot unless the screen is genuinely ambiguous. If the needed value is visible, answer. If a control needs opening, open it, verify, then answer.",
@@ -6260,10 +6376,28 @@ async function runComputerUseSession(args) {
 
 async function collectAmbientContext({ includeFrontmost = true, includeScreenshot = false, includeTabs = true } = {}) {
   const capturedAt = new Date().toISOString();
-  const frontmost = includeFrontmost
+  let frontmost = includeFrontmost
     ? await getFrontmostMacContext()
     : { activeApp: "", activeWindowTitle: "" };
-  const tabs = includeTabs ? await getBrowserTabs(frontmost.activeApp).catch(() => []) : [];
+  const launchContextAgeMs = lastAmbientLaunchContext?.capturedAt
+    ? Date.now() - Date.parse(lastAmbientLaunchContext.capturedAt)
+    : Number.POSITIVE_INFINITY;
+  const shouldUseLaunchContext = includeFrontmost &&
+    contextLooksLikeAmbientSurface(frontmost) &&
+    lastAmbientLaunchContext?.activeApp &&
+    launchContextAgeMs >= 0 &&
+    launchContextAgeMs < 5 * 60 * 1000;
+  if (shouldUseLaunchContext) {
+    frontmost = {
+      activeApp: lastAmbientLaunchContext.activeApp || "",
+      activeWindowTitle: lastAmbientLaunchContext.activeWindowTitle || ""
+    };
+  }
+  const tabs = includeTabs
+    ? shouldUseLaunchContext && Array.isArray(lastAmbientLaunchContext?.openTabs)
+      ? lastAmbientLaunchContext.openTabs
+      : await getBrowserTabs(frontmost.activeApp).catch(() => [])
+    : [];
   const activeTab = tabs.find((tab) => tab.active) || tabs[0] || null;
   const screenshotDataUrl = includeScreenshot ? await captureAmbientScreenshotDataUrl() : "";
   const screenCaptureStatus = includeScreenshot ? (screenshotDataUrl ? "granted" : getScreenRecordingStatus()) : null;

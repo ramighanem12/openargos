@@ -33,6 +33,8 @@ function createComputerUseSurfaceRouter({
   function taskTargetsBrowserSession(task = "") {
     const text = normalizeIntent(task);
     return taskRequiresUserBrowserSession(text) ||
+      (/\b(email|e-mail|gmail|superhuman|inbox|compose|reply|recipient|subject\s+line|message\s+body)\b/.test(text) &&
+        /\b(write|draft|compose|update|edit|improve|rewrite|reply|respond|fill|type)\b/.test(text)) ||
       /\b(?:in|inside|using|with|use|open|switch to)\s+(?:chrome|safari|arc|edge|firefox|my browser|current browser|this browser|this tab|current tab)\b/.test(text);
   }
 

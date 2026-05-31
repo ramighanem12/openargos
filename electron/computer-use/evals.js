@@ -166,6 +166,13 @@ function createComputerUseEvalSuite({
     if (plan.kind !== "native" || plan.background) throw new Error(`Expected live Mac, got ${plan.kind}`);
   });
 
+  add("surface router treats email compose as browser-session work", () => {
+    if (!surfaceRouter?.taskTargetsBrowserSession) return;
+    if (!surfaceRouter.taskTargetsBrowserSession("Use my computer to write an email that converts well.")) {
+      throw new Error("Expected email compose task to require the user's browser/session surface.");
+    }
+  });
+
   add("surface router sends Spotify playback to live Mac", () => {
     const plan = surfaceRouter.resolveAdapterPlan("Play Happy by Pharrell on Spotify.");
     if (plan.kind !== "native" || plan.background) throw new Error(`Expected live Mac, got ${plan.kind}`);
