@@ -67,7 +67,7 @@ body {
   height: 100%;
   margin: 0;
   overflow: hidden;
-  background: var(--bg);
+  background: transparent;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
   letter-spacing: 0;
@@ -159,7 +159,9 @@ button {
   overflow: hidden;
   background:
     radial-gradient(circle at 10% 0%, rgba(92, 74, 70, 0.12), transparent 34%),
-    linear-gradient(180deg, rgba(43, 44, 43, 0.94), rgba(28, 29, 28, 0.98));
+    linear-gradient(180deg, rgba(43, 44, 43, 0.34), rgba(28, 29, 28, 0.42));
+  backdrop-filter: blur(44px) saturate(0.96);
+  -webkit-backdrop-filter: blur(44px) saturate(0.96);
 }
 
 .shell::before {
@@ -167,6 +169,8 @@ button {
   position: absolute;
   inset: 0;
   background: var(--sidebar-glass);
+  backdrop-filter: blur(52px) saturate(0.98);
+  -webkit-backdrop-filter: blur(52px) saturate(0.98);
   pointer-events: none;
 }
 
