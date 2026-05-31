@@ -3080,23 +3080,33 @@ function setUserActionExpanded(item, expanded, { animate = true } = {}) {
   const shell = item?.querySelector(".ambient-user-action-steps-shell");
   const head = item?.querySelector(".ambient-user-action-head");
   if (!shell || !head) return;
+  const expandedHeight = () => Math.min(shell.scrollHeight, 190);
+  const applyExpandedOverflow = () => {
+    shell.style.overflowY = shell.scrollHeight > 190 ? "auto" : "hidden";
+  };
   item.classList.toggle("expanded", expanded);
   head.setAttribute("aria-expanded", String(expanded));
   if (!animate) {
-    shell.style.maxHeight = expanded ? "none" : "0px";
+    shell.style.maxHeight = expanded ? `${expandedHeight()}px` : "0px";
+    shell.style.overflowY = expanded ? (shell.scrollHeight > 190 ? "auto" : "hidden") : "hidden";
     resizeToContent({ force: true });
     window.requestAnimationFrame(() => updateScrollState());
     return;
   }
   if (expanded) {
-    shell.style.maxHeight = `${shell.scrollHeight}px`;
+    shell.style.maxHeight = `${expandedHeight()}px`;
+    applyExpandedOverflow();
   } else {
     shell.style.maxHeight = `${shell.scrollHeight}px`;
+    shell.style.overflowY = "hidden";
     shell.getBoundingClientRect();
     shell.style.maxHeight = "0px";
   }
   window.setTimeout(() => {
-    if (item.classList.contains("expanded")) shell.style.maxHeight = "none";
+    if (item.classList.contains("expanded")) {
+      shell.style.maxHeight = `${expandedHeight()}px`;
+      applyExpandedOverflow();
+    }
     resizeToContent({ force: true, animate: true, duration: 150 })?.then(() => {
       if (autoScrollToBottom || item.classList.contains("expanded")) {
         scrollBodyToBottom({ force: true });
@@ -3130,7 +3140,10 @@ function renderComputerUseSteps(item, stepsInput) {
   });
   if (item.classList.contains("expanded")) {
     const shell = item.querySelector(".ambient-user-action-steps-shell");
-    if (shell) shell.style.maxHeight = `${shell.scrollHeight}px`;
+    if (shell) {
+      shell.style.maxHeight = `${Math.min(shell.scrollHeight, 190)}px`;
+      shell.style.overflowY = shell.scrollHeight > 190 ? "auto" : "hidden";
+    }
   }
 }
 

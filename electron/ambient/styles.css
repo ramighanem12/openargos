@@ -1333,7 +1333,13 @@ body.is-compact-mode .ambient-window-actions {
 .ambient-user-action-steps-shell {
   max-height: 0;
   overflow: hidden;
+  scrollbar-width: none;
   transition: max-height 220ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.ambient-user-action-steps-shell::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .ambient-user-action-current-step {

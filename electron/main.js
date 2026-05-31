@@ -104,6 +104,7 @@ const computerUseDevToolsPorts = [9222, 9223, 9224, 9333];
 const computerUseNativeAccessibilityMaxTextLength = 9000;
 const computerUseNativeOcrEnabled = process.env.OPENARGOS_COMPUTER_USE_NATIVE_OCR !== "0";
 const computerUseNativeOcrMaxTextLength = 7000;
+const computerUseCriticalApprovalTimeoutMs = 5 * 60 * 1000;
 const ambientAgentMaxOutputTokens = 2400;
 const ambientSoundTypes = new Set([
   "default",
@@ -1122,12 +1123,12 @@ function resolveMediaPlaybackFollowupTask(question, recentMessages = []) {
   ].filter(Boolean).join(" ");
 }
 
-function resolveComputerUseTask(question, recentMessages = []) {
+function resolveComputerUseTask(question, recentMessages = [], { taskState = null } = {}) {
   const text = String(question || "").trim();
   const mediaFollowupTask = resolveMediaPlaybackFollowupTask(text, recentMessages);
   if (mediaFollowupTask) return mediaFollowupTask;
   if (textLooksLikeComputerUseStartOnly(text)) {
-    return latestComputerUseTaskFromMessages(recentMessages) || text;
+    return taskState?.task || taskState?.goal || latestComputerUseTaskFromMessages(recentMessages) || text;
   }
   if (textLooksLikeComputerUseTask(text)) {
     return text;
@@ -1135,7 +1136,7 @@ function resolveComputerUseTask(question, recentMessages = []) {
   const imageFollowupTask = resolveImageDownloadFollowupTask(text, recentMessages);
   if (imageFollowupTask) return imageFollowupTask;
   if (textLooksLikeComputerUseFollowup(text)) {
-    return latestComputerUseTaskFromMessages(recentMessages) || text;
+    return taskState?.task || taskState?.goal || latestComputerUseTaskFromMessages(recentMessages) || text;
   }
   return text;
 }
@@ -3418,10 +3419,9 @@ function backgroundImageDownloadBasename(task = "", candidate = {}) {
   const requestedFilename = extractRequestedImageFilename(task);
   if (requestedFilename) return sanitizeDownloadFilenamePart(requestedFilename);
   const cleanTask = stripRequestedImageFilenameClause(task);
-  const taskMatch = String(cleanTask || "").match(/\b(?:image|images|photo|photos|picture|pictures|logo|logos|icon|icons)\s+(?:of|for)\s+([^,.;!?]+)/i);
-  const requestedSubject = extractPublicImageDownloadSubject(cleanTask) || String(taskMatch?.[1] || "").trim();
+  const requestedSubject = requestedImageDownloadSubject(cleanTask);
   const roleQuery = downloadSubjectLooksLikeRoleQuery(requestedSubject || task);
-  const candidateLabel = cleanImageCandidateFilenameLabel(candidate.alt || candidate.title || "");
+  const candidateLabel = cleanImageCandidateFilenameLabel(candidate.alt || candidate.title || candidate.closestText || "");
   if (roleQuery && candidateLabel) return sanitizeDownloadFilenamePart(candidateLabel);
   if (requestedSubject && !roleQuery) return sanitizeDownloadFilenamePart(requestedSubject);
   if (candidateLabel) return sanitizeDownloadFilenamePart(candidateLabel);
@@ -3433,6 +3433,90 @@ function backgroundImageDownloadBasename(task = "", candidate = {}) {
     // Fall back to the generic file name below.
   }
   return "openargos-image";
+}
+
+function requestedImageDownloadSubject(task = "") {
+  const cleanTask = stripRequestedImageFilenameClause(task);
+  const taskMatch = String(cleanTask || "").match(/\b(?:image|images|photo|photos|picture|pictures|logo|logos|icon|icons)\s+(?:of|for)\s+([^,.;!?]+)/i);
+  return extractPublicImageDownloadSubject(cleanTask) || String(taskMatch?.[1] || "").trim();
+}
+
+function normalizeImageRelevanceText(value = "") {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/https?:\/\/|www\./g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function imageRelevanceTerms(value = "") {
+  const stopWords = new Set([
+    "a", "an", "the", "and", "or", "of", "for", "to", "in", "on", "at", "by", "with",
+    "photo", "photos", "image", "images", "picture", "pictures", "pic", "pics", "logo", "logos", "icon", "icons",
+    "official", "current", "public", "headshot", "portrait", "file", "named", "name"
+  ]);
+  return normalizeImageRelevanceText(value)
+    .split(" ")
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 2 && !stopWords.has(term))
+    .slice(0, 10);
+}
+
+function backgroundImageCandidateText(candidate = {}) {
+  return normalizeImageRelevanceText([
+    candidate.alt,
+    candidate.title,
+    candidate.closestText,
+    candidate.source === "current-page" || /^meta|^link/i.test(candidate.source || "") ? candidate.pageTitle : "",
+    candidate.url
+  ].filter(Boolean).join(" "));
+}
+
+function scoreBackgroundImageCandidate(task = "", candidate = {}) {
+  const subject = requestedImageDownloadSubject(task);
+  const terms = imageRelevanceTerms(subject);
+  const haystack = backgroundImageCandidateText(candidate);
+  const normalizedSubject = normalizeImageRelevanceText(subject);
+  const area = Math.max(0, Number(candidate.width || 0) * Number(candidate.height || 0));
+  const isLogoTask = /\b(?:logo|logos|icon|icons)\b/i.test(`${task} ${subject}`);
+  const isLikelyDecorative = /\b(sprite|spacer|pixel|blank|transparent|placeholder|avatar-default|favicon|icon)\b/i.test(haystack);
+  let score = 0;
+  let matches = 0;
+  for (const term of terms) {
+    if (!haystack.includes(term)) continue;
+    matches += 1;
+    score += term.length >= 4 ? 4 : 2;
+  }
+  const phraseMatch = Boolean(normalizedSubject && haystack.includes(normalizedSubject));
+  if (phraseMatch) score += 10;
+  if (/^image\//i.test(candidate.contentType || "")) score += 2;
+  if (candidate.source === "current-page") score += 2;
+  if (area >= 120000) score += 5;
+  else if (area >= 45000) score += 3;
+  else if (area >= 12000) score += 1;
+  else if (!isLogoTask) score -= 8;
+  if (isLogoTask && /\.(?:svg|png)(?:[?#]|$)/i.test(candidate.url || "")) score += 3;
+  if (!isLogoTask && /\.(?:svg|gif)(?:[?#]|$)/i.test(candidate.url || "")) score -= 4;
+  if (isLikelyDecorative) score -= 10;
+  return {
+    ...candidate,
+    relevanceScore: score,
+    relevanceMatches: matches,
+    relevanceTerms: terms,
+    phraseMatch
+  };
+}
+
+function backgroundImageCandidateIsRelevant(task = "", scored = {}) {
+  const terms = Array.isArray(scored.relevanceTerms) ? scored.relevanceTerms : [];
+  if (!terms.length) return true;
+  const subject = requestedImageDownloadSubject(task);
+  const roleQuery = downloadSubjectLooksLikeRoleQuery(subject || task);
+  if (scored.phraseMatch) return true;
+  if (roleQuery) return scored.relevanceMatches >= 1 && scored.relevanceScore >= 4;
+  if (terms.length === 1) return scored.relevanceMatches >= 1 && scored.relevanceScore >= 3;
+  return scored.relevanceMatches >= Math.min(2, terms.length) && scored.relevanceScore >= 6;
 }
 
 function bufferFromImageDataUrl(dataUrl = "") {
@@ -3468,6 +3552,9 @@ async function backgroundBrowserImageDownloadCandidates(win) {
         candidates.push({
           url: currentUrl,
           alt: document.title || "current image",
+          title: document.title || "",
+          closestText: clean(document.body && document.body.innerText ? document.body.innerText : "", 220),
+          pageTitle: document.title || "",
           width: window.innerWidth || 0,
           height: window.innerHeight || 0,
           contentType,
@@ -3477,16 +3564,41 @@ async function backgroundBrowserImageDownloadCandidates(win) {
       ["meta[property='og:image']", "meta[name='twitter:image']", "link[rel='image_src']"].forEach((selector) => {
         document.querySelectorAll(selector).forEach((element) => {
           const url = absoluteUrl(element.getAttribute("content") || element.getAttribute("href") || "");
-          if (url) candidates.push({ url, alt: document.title || "page image", width: 0, height: 0, contentType: "", source: selector });
+          if (url) {
+            candidates.push({
+              url,
+              alt: document.title || "page image",
+              title: document.title || "",
+              closestText: clean(document.body && document.body.innerText ? document.body.innerText : "", 220),
+              pageTitle: document.title || "",
+              width: 0,
+              height: 0,
+              contentType: "",
+              source: selector
+            });
+          }
         });
       });
       Array.from(document.images || []).forEach((image) => {
         const rect = image.getBoundingClientRect();
         const url = absoluteUrl(image.currentSrc || image.src || "");
         if (!url) return;
+        const closest = image.closest("figure, article, a, [role='link'], [aria-label], div");
+        const closestText = clean(
+          image.alt ||
+          image.title ||
+          image.getAttribute("aria-label") ||
+          closest?.getAttribute?.("aria-label") ||
+          closest?.innerText ||
+          "",
+          260
+        );
         candidates.push({
           url,
-          alt: clean(image.alt || image.title || image.getAttribute("aria-label") || document.title || ""),
+          alt: clean(image.alt || image.title || image.getAttribute("aria-label") || ""),
+          title: clean(image.title || image.getAttribute("title") || ""),
+          closestText,
+          pageTitle: document.title || "",
           width: Math.round(image.naturalWidth || rect.width || 0),
           height: Math.round(image.naturalHeight || rect.height || 0),
           contentType: "",
@@ -3500,22 +3612,37 @@ async function backgroundBrowserImageDownloadCandidates(win) {
           seen.add(item.url);
           return /^https?:/i.test(item.url) || /^data:image\\//i.test(item.url);
         })
-        .sort((a, b) => {
-          const areaA = Number(a.width || 0) * Number(a.height || 0);
-          const areaB = Number(b.width || 0) * Number(b.height || 0);
-          return areaB - areaA;
-        })
-        .slice(0, 20);
+        .slice(0, 60);
     })()
   `, true).catch(() => []);
 }
 
 async function saveBackgroundBrowserImage(win, { task = "" } = {}) {
   const candidates = await backgroundBrowserImageDownloadCandidates(win);
+  const scoredCandidates = (Array.isArray(candidates) ? candidates : [])
+    .map((candidate) => scoreBackgroundImageCandidate(task, candidate))
+    .sort((a, b) => {
+      if (b.relevanceScore !== a.relevanceScore) return b.relevanceScore - a.relevanceScore;
+      const areaA = Number(a.width || 0) * Number(a.height || 0);
+      const areaB = Number(b.width || 0) * Number(b.height || 0);
+      return areaB - areaA;
+    })
+    .slice(0, 24);
   const downloadsDir = computerUseDownloadsDir();
   fs.mkdirSync(downloadsDir, { recursive: true });
 
-  for (const candidate of Array.isArray(candidates) ? candidates : []) {
+  for (const candidate of scoredCandidates) {
+    if (!backgroundImageCandidateIsRelevant(task, candidate)) {
+      writeAmbientLog("computer_use_background_download_candidate_skipped", {
+        url: candidate?.url || "",
+        alt: truncateText(candidate?.alt || "", 160),
+        closestText: truncateText(candidate?.closestText || "", 160),
+        relevanceScore: candidate.relevanceScore,
+        relevanceMatches: candidate.relevanceMatches,
+        relevanceTerms: candidate.relevanceTerms
+      });
+      continue;
+    }
     try {
       let buffer = null;
       let contentType = candidate.contentType || "";
@@ -3546,7 +3673,9 @@ async function saveBackgroundBrowserImage(win, { task = "" } = {}) {
         url: candidate.url,
         alt: candidate.alt || "",
         source: candidate.source || "image",
-        bytes: buffer.length
+        bytes: buffer.length,
+        relevanceScore: candidate.relevanceScore,
+        relevanceMatches: candidate.relevanceMatches
       };
       writeAmbientLog("computer_use_background_download_saved", saved);
       return saved;
@@ -3558,7 +3687,7 @@ async function saveBackgroundBrowserImage(win, { task = "" } = {}) {
     }
   }
 
-  const error = new Error("No downloadable image was found in the background browser.");
+  const error = new Error("No relevant downloadable image was found in the background browser.");
   error.code = "computer_use_background_download_not_found";
   throw error;
 }
@@ -3674,6 +3803,78 @@ async function applyBackgroundBrowserInterceptors(win) {
   `, true).catch(() => []);
 }
 
+async function clickBackgroundBrowserDomTarget(win, point = {}, { doubleClick = false } = {}) {
+  return await win.webContents.executeJavaScript(`
+    (() => {
+      const point = ${JSON.stringify({ x: Math.round(point.x || 0), y: Math.round(point.y || 0) })};
+      const clean = (value, limit = 160) => String(value || "")
+        .replace(/\\s+/g, " ")
+        .trim()
+        .slice(0, limit);
+      const clickableSelector = [
+        "a[href]",
+        "button",
+        "input",
+        "textarea",
+        "select",
+        "summary",
+        "[role='button']",
+        "[role='link']",
+        "[role='menuitem']",
+        "[tabindex]:not([tabindex='-1'])"
+      ].join(",");
+      const isVisible = (element) => {
+        if (!element || !element.getBoundingClientRect) return false;
+        const rect = element.getBoundingClientRect();
+        if (rect.width < 2 || rect.height < 2) return false;
+        const style = window.getComputedStyle(element);
+        return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity || 1) > 0.01;
+      };
+      let element = document.elementFromPoint(point.x, point.y);
+      if (!element) return { ok: false, reason: "no_element" };
+      const target = element.closest(clickableSelector) || element;
+      if (!target || !isVisible(target)) return { ok: false, reason: "not_visible" };
+      if (target.disabled || target.getAttribute("aria-disabled") === "true") return { ok: false, reason: "disabled" };
+      const tag = (target.tagName || "").toLowerCase();
+      const role = target.getAttribute("role") || tag;
+      const label = clean(
+        target.getAttribute("aria-label") ||
+        target.getAttribute("title") ||
+        target.getAttribute("alt") ||
+        target.value ||
+        target.innerText ||
+        target.textContent ||
+        ""
+      );
+      const clickable = target.matches(clickableSelector) || typeof target.click === "function";
+      if (!clickable) return { ok: false, reason: "not_clickable", tag, role, label };
+      try {
+        target.focus?.({ preventScroll: true });
+      } catch {}
+      try {
+        const eventOptions = { bubbles: true, cancelable: true, view: window, clientX: point.x, clientY: point.y };
+        target.dispatchEvent(new MouseEvent("mousemove", eventOptions));
+        target.dispatchEvent(new MouseEvent("mousedown", eventOptions));
+        target.dispatchEvent(new MouseEvent("mouseup", eventOptions));
+        target.click();
+        if (${JSON.stringify(Boolean(doubleClick))}) target.dispatchEvent(new MouseEvent("dblclick", eventOptions));
+        return {
+          ok: true,
+          tag,
+          role,
+          label,
+          href: target.href || target.getAttribute?.("href") || ""
+        };
+      } catch (error) {
+        return { ok: false, reason: error && error.message ? error.message : "click_failed", tag, role, label };
+      }
+    })()
+  `, true).catch((error) => ({
+    ok: false,
+    reason: error?.message || "dom_click_failed"
+  }));
+}
+
 async function executeBackgroundBrowserAction(win, action, capture, { task = "", savedDownloads = null, browserState = null } = {}) {
   const webContents = win.webContents;
   const type = normalizeComputerActionType(action);
@@ -3744,6 +3945,19 @@ async function executeBackgroundBrowserAction(win, action, capture, { task = "",
     const point = mapBackgroundBrowserPoint(action, capture);
     const button = normalizeComputerActionButton(action.button);
     const clickCount = type === "double_click" ? 2 : Math.max(1, Math.min(3, Number(action.clicks || 1)));
+    if (button === "left" && clickCount <= 2) {
+      const domClick = await clickBackgroundBrowserDomTarget(win, point, { doubleClick: clickCount > 1 });
+      if (domClick?.ok) {
+        writeAmbientLog("computer_use_background_dom_click", {
+          label: truncateText(domClick.label || "", 120),
+          role: domClick.role || "",
+          href: compactBackgroundSnapshotUrl(domClick.href || ""),
+          x: Math.round(point.x),
+          y: Math.round(point.y)
+        });
+        return;
+      }
+    }
     webContents.sendInputEvent({ type: "mouseMove", x: Math.round(point.x), y: Math.round(point.y), button });
     await sleep(randomIntBetween(computerUseActionMicroDelayMinMs, computerUseActionMicroDelayMaxMs));
     webContents.sendInputEvent({ type: "mouseDown", x: Math.round(point.x), y: Math.round(point.y), button, clickCount });
@@ -4864,7 +5078,15 @@ function waitForComputerUseCriticalApproval({ sendStream, sendStatus, approval, 
 
   return new Promise((resolve, reject) => {
     const signal = runControl?.abortController?.signal;
+    const timeout = setTimeout(() => {
+      pendingComputerUseCriticalApprovals.delete(decisionId);
+      cleanup();
+      const error = new Error("Computer Use stopped because the approval prompt timed out.");
+      error.code = "computer_use_critical_approval_timeout";
+      reject(error);
+    }, computerUseCriticalApprovalTimeoutMs);
     const cleanup = () => {
+      clearTimeout(timeout);
       if (signal) signal.removeEventListener("abort", onAbort);
     };
     const onAbort = () => {
@@ -6992,7 +7214,7 @@ function fallbackAmbientTurnPlan(question, recentMessages = [], taskState = null
     };
   }
   if (detectComputerUseIntent(question, { recentMessages })) {
-    const task = resolveComputerUseTask(question, recentMessages);
+    const task = resolveComputerUseTask(question, recentMessages, { taskState });
     return {
       route: "computer_use",
       task,
@@ -8273,6 +8495,10 @@ function cleanPublicImageSearchSubject(subject = "") {
 }
 
 function publicImageSearchUrlForSubject(subject = "") {
+  const roleQuery = extractLeadershipRoleQuery(subject);
+  if (roleQuery?.role && roleQuery?.organization) {
+    return `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(`current ${roleQuery.role} of ${roleQuery.organization} photo`)}`;
+  }
   const clean = cleanPublicImageSearchSubject(subject) || cleanComputerUseEntityText(subject);
   const query = /\b(?:photo|photos|image|images|picture|pictures|pic|pics|logo|logos|icon|icons)\b/i.test(clean)
     ? clean
@@ -8315,9 +8541,7 @@ function initialBackgroundBrowserUrlForTask(task = "") {
   const wikipediaSubject = extractWikipediaPageSubject(task);
   if (wikipediaSubject) return wikipediaSearchUrlForSubject(wikipediaSubject);
   const imageSubject = extractPublicImageDownloadSubject(task);
-  if (imageSubject && !downloadSubjectLooksLikeRoleQuery(imageSubject)) {
-    return publicImageSearchUrlForSubject(imageSubject);
-  }
+  if (imageSubject) return publicImageSearchUrlForSubject(imageSubject);
   return extractComputerUseUrlFromTask(task) || backgroundBrowserSearchUrl(task);
 }
 
