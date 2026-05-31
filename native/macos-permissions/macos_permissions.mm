@@ -1118,6 +1118,95 @@ napi_value DescribeElementAtPoint(napi_env env, napi_callback_info info) {
   return result;
 }
 
+napi_value PerformActionAtPoint(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value args[1];
+  napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+  napi_value result;
+  napi_create_object(env, &result);
+  SetBool(env, result, "ok", false);
+  SetBool(env, result, "found", false);
+
+  double x = 0;
+  double y = 0;
+  if (argc < 1 || !GetNamedDouble(env, args[0], "x", &x) || !GetNamedDouble(env, args[0], "y", &y)) {
+    SetString(env, result, "error", "performActionAtPoint requires { x, y }.");
+    return result;
+  }
+  if (!AXIsProcessTrusted()) {
+    SetString(env, result, "error", "Accessibility is not trusted.");
+    return result;
+  }
+
+  AXUIElementRef systemWide = AXUIElementCreateSystemWide();
+  AXUIElementRef element = nullptr;
+  AXError lookupError = AXUIElementCopyElementAtPosition(systemWide, static_cast<float>(x), static_cast<float>(y), &element);
+  if (systemWide) CFRelease(systemWide);
+  if (lookupError != kAXErrorSuccess || !element) {
+    SetInt(env, result, "errorCode", static_cast<int32_t>(lookupError));
+    return result;
+  }
+
+  SetBool(env, result, "found", true);
+  SetInt(env, result, "x", static_cast<int32_t>(std::round(x)));
+  SetInt(env, result, "y", static_cast<int32_t>(std::round(y)));
+
+  AXUIElementRef current = element;
+  CFRetain(current);
+  AXError actionError = kAXErrorCannotComplete;
+  for (int depth = 0; current && depth < 5; depth += 1) {
+    const std::string role = AXStringAttribute(current, kAXRoleAttribute);
+    const std::string title = AXStringAttribute(current, kAXTitleAttribute);
+    if (depth == 0) {
+      SetString(env, result, "role", role.c_str());
+      SetString(env, result, "title", title.c_str());
+    }
+
+    CFArrayRef actionNames = nullptr;
+    AXUIElementCopyActionNames(current, &actionNames);
+    bool supportsPress = false;
+    if (actionNames) {
+      CFIndex count = CFArrayGetCount(actionNames);
+      for (CFIndex index = 0; index < count; index += 1) {
+        CFStringRef actionName = static_cast<CFStringRef>(CFArrayGetValueAtIndex(actionNames, index));
+        if (actionName && CFStringCompare(actionName, kAXPressAction, 0) == kCFCompareEqualTo) {
+          supportsPress = true;
+          break;
+        }
+      }
+      CFRelease(actionNames);
+    }
+
+    if (supportsPress) {
+      actionError = AXUIElementPerformAction(current, kAXPressAction);
+      if (actionError == kAXErrorSuccess) {
+        SetBool(env, result, "ok", true);
+        SetString(env, result, "performedAction", "AXPress");
+        SetInt(env, result, "performedDepth", depth);
+        CFRelease(current);
+        CFRelease(element);
+        return result;
+      }
+    }
+
+    CFTypeRef parentValue = nullptr;
+    AXError parentError = AXUIElementCopyAttributeValue(current, kAXParentAttribute, &parentValue);
+    CFRelease(current);
+    current = nullptr;
+    if (parentError != kAXErrorSuccess || !parentValue || CFGetTypeID(parentValue) != AXUIElementGetTypeID()) {
+      if (parentValue) CFRelease(parentValue);
+      break;
+    }
+    current = static_cast<AXUIElementRef>(parentValue);
+  }
+
+  SetInt(env, result, "errorCode", static_cast<int32_t>(actionError));
+  if (current) CFRelease(current);
+  CFRelease(element);
+  return result;
+}
+
 napi_value StartShortcutMonitor(napi_env env, napi_callback_info info) {
   size_t argc = 2;
   napi_value args[2];
@@ -1334,6 +1423,7 @@ napi_value Init(napi_env env, napi_value exports) {
     {"keyPress", nullptr, KeyPress, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"typeText", nullptr, TypeText, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"describeElementAtPoint", nullptr, DescribeElementAtPoint, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"performActionAtPoint", nullptr, PerformActionAtPoint, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"startShortcutMonitor", nullptr, StartShortcutMonitor, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"stopShortcutMonitor", nullptr, StopShortcutMonitor, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"startVoiceCapture", nullptr, StartVoiceCapture, nullptr, nullptr, nullptr, napi_default, nullptr},

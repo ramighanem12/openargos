@@ -5,6 +5,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { promisify } = require("node:util");
 const { Blob } = require("node:buffer");
+const { createComputerUseActionVerifier } = require("./computer-use/action-verifier");
+const { createComputerUseEvalSuite } = require("./computer-use/evals");
+const { createComputerUseExecutor } = require("./computer-use/executor");
+const { createComputerUsePlanner } = require("./computer-use/planner");
+const { createComputerUseSafetyGate } = require("./computer-use/safety-gate");
+const { createComputerUseSurfaceRouter } = require("./computer-use/surface-router");
+const { createComputerUseTaskStore } = require("./computer-use/task-store");
 
 let mainWindow;
 let ambientWindow;
@@ -119,6 +126,74 @@ const ambientSoundTypes = new Set([
   "funk_pop",
   "electro_bounce"
 ]);
+const computerUseTaskStore = createComputerUseTaskStore({
+  readLocalStore,
+  updateLocalStore,
+  localDocId,
+  truncateText
+});
+const computerUsePlanner = createComputerUsePlanner({
+  truncateText,
+  normalizeComputerIntentText,
+  detectAmbientMemorySaveIntent,
+  detectComputerUseStatusQuery,
+  detectComputerUseIntent,
+  resolveComputerUseTask,
+  rejectsComputerUseIntent,
+  textLooksLikeComputerUseTask,
+  textLooksLikeComputerUseFollowup,
+  extractPublicImageDownloadSubject,
+  resolveImageDownloadFollowupTask,
+  hasRecentComputerUseContext,
+  compactComputerUseTaskStateText
+});
+const computerUseSurfaceRouter = createComputerUseSurfaceRouter({
+  normalizeComputerIntentText,
+  extractPublicImageDownloadSubject,
+  extractLeadershipRoleQuery,
+  extractComputerUseUrlFromTask,
+  initialBackgroundBrowserUrlForTask
+});
+const computerUseSafetyGate = createComputerUseSafetyGate({
+  pendingApprovals: pendingComputerUseCriticalApprovals,
+  randomId,
+  timeoutMs: computerUseCriticalApprovalTimeoutMs,
+  truncateText,
+  presentApproval: presentAmbientWindowForComputerUseApproval,
+  cancelledError: computerUseCancelledError,
+  log: writeAmbientLog
+});
+const computerUseActionVerifier = createComputerUseActionVerifier({
+  normalizeComputerActionType,
+  normalizedComputerActionKeys,
+  getAdapterStateFingerprint,
+  runAdapterInterceptors,
+  computerActionLogDetails,
+  sleepForComputerUse,
+  randomIntBetween,
+  cancelledError: computerUseCancelledError,
+  assertNotCancelled: assertComputerUseNotCancelled,
+  log: writeAmbientLog,
+  microDelayMinMs: computerUseActionMicroDelayMinMs,
+  microDelayMaxMs: computerUseActionMicroDelayMaxMs,
+  verifyWaitMs: computerUseLocalVerifyWaitMs,
+  localRetryLimit: computerUseLocalRetryLimit,
+  fastMode: computerUseFastMode
+});
+const computerUseExecutor = createComputerUseExecutor({
+  normalizeComputerIntentText,
+  normalizeAmbientResponseText,
+  extractOpenAIText,
+  truncateText
+});
+const computerUseEvalSuite = createComputerUseEvalSuite({
+  planner: computerUsePlanner,
+  executor: computerUseExecutor,
+  surfaceRouter: computerUseSurfaceRouter,
+  safetyGate: computerUseSafetyGate,
+  detectCriticalAction: detectComputerUseCriticalAction,
+  blockedBackgroundBrowserActionReason
+});
 let commandCenterChimePath = "";
 let ambientDefaultChimePath = "";
 const ambientVariantChimePaths = new Map();
@@ -953,7 +1028,7 @@ function textLooksLikeComputerUseTask(value, { requireAsk = true } = {}) {
 function textLooksLikeComputerUseFollowup(value) {
   const normalized = normalizeComputerIntentText(value);
   if (!normalized || rejectsComputerUseIntent(normalized)) return false;
-  return /\b(yes|yeah|yep|go ahead|do it|do that|redo it|redo|rerun|run it again|do it again|try it again|can you do it|could you do it|are you going to do it|will you do it|please do|for me|that's what i'm asking|that is what i'm asking|why are you not using it|why can'?t you use|why can't you use|supposed to|try now|try again|retry|again|now that (?:it'?s|it is) on|i turned it on|it'?s on|computer use is on|use (?:the\s+|a\s+)?computer|use (?:the\s+)?mac|use computer use|start computer use|make (?:the\s+)?change|the first one|first one|the second one|second one|that one|dd|door\s*dash|doordash)\b/.test(normalized) ||
+  return /\b(yes|yeah|yep|go ahead|do it|do that|redo it|redo|rerun|run it again|do it again|try it again|can you do it|could you do it|are you going to do it|will you do it|you gonna do it|please do|for me|that's what i'm asking|that is what i'm asking|i asked you to|i told you to|are you not (?:downloading|saving|opening|playing|doing) it|why are you not using it|why can'?t you use|why can't you use|supposed to|try now|try again|retry|again|now that (?:it'?s|it is) on|i turned it on|it'?s on|computer use is on|use (?:the\s+|a\s+)?computer|use (?:the\s+)?mac|use computer use|start computer use|make (?:the\s+)?change|the first one|first one|the second one|second one|that one|dd|door\s*dash|doordash)\b/.test(normalized) ||
     /^(?:that|this|ok|okay|sure|please|pls|try|again|redo|rerun|now)$/.test(normalized);
 }
 
@@ -2406,20 +2481,11 @@ function computerUseBatchSettleWaitMs(actions = []) {
 }
 
 function isMeaningfulComputerAction(action) {
-  return !["wait", "screenshot", "move"].includes(normalizeComputerActionType(action));
+  return computerUseActionVerifier.isMeaningfulAction(action);
 }
 
 function actionCanSafelyLocalRetry(action, adapter = {}) {
-  const type = normalizeComputerActionType(action);
-  if (!isMeaningfulComputerAction(action)) return false;
-  if (adapter.verificationStrength !== "strong") return false;
-  if (type === "type") return false;
-  if (type === "keypress") {
-    const keys = normalizedComputerActionKeys(action);
-    if (keys.includes("DELETE") || keys.includes("BACKSPACE")) return false;
-    if (keys.includes("RETURN") || keys.includes("ENTER")) return false;
-  }
-  return ["click", "double_click", "scroll"].includes(type);
+  return computerUseActionVerifier.actionCanSafelyLocalRetry(action, adapter);
 }
 
 function stableComputerStateHash(value = {}) {
@@ -2458,79 +2524,18 @@ async function executeQueuedComputerAction({
   runControl = null,
   actionLogDetails = null
 }) {
-  assertComputerUseNotCancelled(runControl);
-  const meaningful = isMeaningfulComputerAction(action);
-  const canVerify = meaningful && typeof adapter?.stateFingerprint === "function";
-  const beforeFingerprint = canVerify ? await getAdapterStateFingerprint(adapter, capture) : "";
-  const executeOnce = async (attempt) => {
-    assertComputerUseNotCancelled(runControl);
-    await sleepForComputerUse(randomIntBetween(computerUseActionMicroDelayMinMs, computerUseActionMicroDelayMaxMs), runControl);
-    await adapter.execute(action, capture, context);
-    await sleepForComputerUse(computerUseLocalVerifyWaitMs, runControl);
-    const handled = await runAdapterInterceptors(adapter, capture, {
-      ...context,
-      phase: "post_action",
-      action,
-      attempt
-    });
-    if (handled.length) {
-      writeAmbientLog("computer_use_interceptor_handled", {
-        adapter: adapter?.kind || "unknown",
-        phase: "post_action",
-        handled
-      });
-    }
-  };
-
-  await executeOnce(1);
-  if (!canVerify || !beforeFingerprint) {
-    return { verified: false, retried: false, beforeFingerprint, afterFingerprint: "" };
-  }
-  if (typeof adapter?.isBusy === "function" && await adapter.isBusy().catch(() => false)) {
-    return { verified: false, retried: false, beforeFingerprint, afterFingerprint: "" };
-  }
-
-  let afterFingerprint = await getAdapterStateFingerprint(adapter, capture);
-  const changed = Boolean(afterFingerprint && afterFingerprint !== beforeFingerprint);
-  if (changed || !actionCanSafelyLocalRetry(action, adapter)) {
-    return { verified: changed, retried: false, beforeFingerprint, afterFingerprint };
-  }
-
-  for (let retry = 1; retry <= computerUseLocalRetryLimit; retry += 1) {
-    writeAmbientLog("computer_use_local_micro_retry", {
-      adapter: adapter?.kind || "unknown",
-      action: actionLogDetails || computerActionLogDetails(action, capture),
-      retry
-    });
-    await executeOnce(retry + 1);
-    afterFingerprint = await getAdapterStateFingerprint(adapter, capture);
-    if (afterFingerprint && afterFingerprint !== beforeFingerprint) {
-      return { verified: true, retried: true, beforeFingerprint, afterFingerprint };
-    }
-  }
-  return { verified: false, retried: true, beforeFingerprint, afterFingerprint };
+  return computerUseActionVerifier.executeQueuedAction({
+    adapter,
+    action,
+    capture,
+    context,
+    runControl,
+    actionLogDetails
+  });
 }
 
 function createComputerUseActionQueue({ adapter, runControl = null } = {}) {
-  let tail = Promise.resolve();
-  let cleared = false;
-  return {
-    clear() {
-      cleared = true;
-    },
-    async run(payload) {
-      const run = async () => {
-        if (cleared) throw computerUseCancelledError();
-        return await executeQueuedComputerAction({
-          adapter,
-          runControl,
-          ...payload
-        });
-      };
-      tail = tail.then(run, run);
-      return await tail;
-    }
-  };
+  return computerUseActionVerifier.createActionQueue({ adapter, runControl });
 }
 
 function isComputerKeypressAction(action, matcher) {
@@ -2542,29 +2547,7 @@ function isComputerKeypressAction(action, matcher) {
 }
 
 function safeComputerActionBatch(actions = []) {
-  const list = Array.isArray(actions) ? actions.filter(Boolean) : [];
-  if (!computerUseFastMode || list.length <= 1) return list;
-  const meaningful = list.filter((action) => !["screenshot", "move"].includes(normalizeComputerActionType(action)));
-  if (meaningful.length <= 1) return list.slice(0, 1);
-
-  const firstType = normalizeComputerActionType(meaningful[0]);
-  const types = meaningful.map(normalizeComputerActionType);
-  const allKeyboardOrText = types.every((type) => type === "keypress" || type === "type");
-  if (allKeyboardOrText) return meaningful.slice(0, 4);
-
-  const addressBarSequence = meaningful.length >= 3 &&
-    isComputerKeypressAction(meaningful[0], (keys) => keys.includes("COMMAND") && keys.includes("L")) &&
-    normalizeComputerActionType(meaningful[1]) === "type" &&
-    isComputerKeypressAction(meaningful[2], (keys) => keys.includes("ENTER") || keys.includes("RETURN"));
-  if (addressBarSequence) return meaningful.slice(0, 3);
-
-  if (firstType === "click" || firstType === "double_click") {
-    const secondType = normalizeComputerActionType(meaningful[1]);
-    if (secondType === "type") return meaningful.slice(0, 2);
-    return meaningful.slice(0, 1);
-  }
-  if (firstType === "scroll") return meaningful.slice(0, 1);
-  return meaningful.slice(0, 1);
+  return computerUseActionVerifier.safeActionBatch(actions);
 }
 
 function computerUseTextLooksSensitive(text, task = "") {
@@ -2680,17 +2663,7 @@ function computerUseRecentConversationText(messages = []) {
 }
 
 function computerUseTaskStateText(taskState = null) {
-  if (!taskState?.task && !taskState?.goal) return "Current Computer Use task state: none";
-  return [
-    "Current Computer Use task state:",
-    `Task id: ${taskState.taskId || "unknown"}`,
-    `Status: ${taskState.status || "unknown"}`,
-    `Goal: ${taskState.goal || taskState.task}`,
-    taskState.finalText ? `Last result: ${taskState.finalText}` : "",
-    taskState.errorMessage ? `Last blocker: ${taskState.errorMessage}` : "",
-    taskState.blocker?.category ? `Blocker category: ${taskState.blocker.category}` : "",
-    taskState.lastKnownState?.label ? `Last step: ${taskState.lastKnownState.label} (${taskState.lastKnownState.status || "unknown"})` : ""
-  ].filter(Boolean).join("\n");
+  return computerUseTaskStore.promptText(taskState);
 }
 
 function computerCaptureContextText(capture) {
@@ -2728,10 +2701,32 @@ async function executeComputerAction(action, capture, { task = "" } = {}) {
       throw new Error("Computer Use tried to click the OpenArgos chat window, so I stopped before making a blind click.");
     }
     const point = mapComputerPoint(action, capture);
+    const button = normalizeComputerActionButton(action.button);
+    const clickCount = type === "double_click" ? 2 : Math.max(1, Math.min(3, Number(action.clicks || 1)));
+    if (button === "left" && clickCount === 1 && typeof permissions.performActionAtPoint === "function") {
+      const axResult = permissions.performActionAtPoint(point);
+      if (axResult?.ok) {
+        writeAmbientLog("computer_use_native_ax_press", {
+          role: axResult.role || "",
+          title: truncateText(axResult.title || "", 120),
+          performedDepth: axResult.performedDepth ?? null,
+          x: Math.round(point.x),
+          y: Math.round(point.y)
+        });
+        return;
+      }
+      writeAmbientLog("computer_use_native_ax_press_fallback", {
+        found: Boolean(axResult?.found),
+        errorCode: axResult?.errorCode ?? null,
+        error: axResult?.error || "",
+        x: Math.round(point.x),
+        y: Math.round(point.y)
+      });
+    }
     permissions.clickMouse({
       ...point,
-      button: normalizeComputerActionButton(action.button),
-      clicks: type === "double_click" ? 2 : Math.max(1, Math.min(3, Number(action.clicks || 1)))
+      button,
+      clicks: clickCount
     });
     return;
   }
@@ -4558,33 +4553,17 @@ async function createComputerUseAdapter(task = "", contextOrPlan = {}) {
 }
 
 function extractComputerCalls(response) {
-  return (response?.output || [])
-    .filter((item) => item?.type === "computer_call")
-    .map((item) => ({
-      ...item,
-      actions: Array.isArray(item.actions)
-        ? item.actions
-        : item.action
-          ? [item.action]
-          : []
-    }));
+  return computerUseExecutor.extractComputerCalls(response);
 }
 
 function extractComputerReasoningStatus(response) {
-  const reasoning = (response?.output || []).find((item) => item?.type === "reasoning");
-  const summaries = reasoning?.summary || reasoning?.summaries || [];
-  const text = Array.isArray(summaries)
-    ? summaries.map((item) => item?.text || item?.summary_text || "").filter(Boolean).join(" ")
-    : "";
-  return truncateText(text, 120);
+  return computerUseExecutor.extractReasoningStatus(response);
 }
 
 function computerUseApprovalText(task = "", plan = resolveComputerUseAdapterPlan(task)) {
-  return [
-    "Okay, I’ll use Computer Use.",
-    "",
-    "Approve to continue. I’ll stop before anything risky or irreversible."
-  ].join("\n");
+  void task;
+  void plan;
+  return computerUseExecutor.approvalText();
 }
 
 function modelCatalogInstructionText() {
@@ -4694,72 +4673,19 @@ async function callOpenAIComputerResponse({ apiKey, model, instructions, input, 
 }
 
 function localCreateComputerUseSession(session = {}) {
-  const now = Date.now();
-  const doc = {
-    _id: localDocId("cua"),
-    createdAt: now,
-    updatedAt: now,
-    status: "pending_approval",
-    ...session
-  };
-  updateLocalStore((store) => ({
-    ...store,
-    computerUseSessions: [doc, ...(Array.isArray(store.computerUseSessions) ? store.computerUseSessions : [])].slice(0, 300)
-  }));
-  return doc;
+  return computerUseTaskStore.createSession(session);
 }
 
 function localUpdateComputerUseSession(payload = {}) {
-  const sessionId = payload.sessionId || payload._id;
-  if (!sessionId) return null;
-  let result = null;
-  updateLocalStore((store) => {
-    const sessions = (Array.isArray(store.computerUseSessions) ? store.computerUseSessions : []).map((session) => {
-      if (session._id !== sessionId) return session;
-      result = {
-        ...session,
-        ...payload,
-        _id: session._id,
-        updatedAt: Date.now()
-      };
-      delete result.sessionId;
-      return result;
-    });
-    return { ...store, computerUseSessions: sessions };
-  });
-  return result;
+  return computerUseTaskStore.updateSession(payload);
 }
 
 function localUpdateComputerUseTaskState(approval = {}, stepEntry = {}, status = "running") {
-  if (!approval?.sessionId) return null;
-  return localUpdateComputerUseSession({
-    sessionId: approval.sessionId,
-    status,
-    lastKnownState: {
-      step: stepEntry.step || null,
-      label: stepEntry.label || "",
-      status: stepEntry.status || status,
-      app: stepEntry.app || "",
-      windowTitle: stepEntry.windowTitle || "",
-      surface: stepEntry.surface || "",
-      url: stepEntry.url || "",
-      updatedAt: new Date().toISOString()
-    }
-  });
+  return computerUseTaskStore.updateTaskState(approval, stepEntry, status);
 }
 
 function localRecordComputerUseAction(payload = {}) {
-  const now = Date.now();
-  const doc = {
-    _id: localDocId("cua_action"),
-    createdAt: now,
-    ...payload
-  };
-  updateLocalStore((store) => ({
-    ...store,
-    computerUseActions: [doc, ...(Array.isArray(store.computerUseActions) ? store.computerUseActions : [])].slice(0, 1000)
-  }));
-  return doc;
+  return computerUseTaskStore.recordAction(payload);
 }
 
 function localUpdateAmbientMessageMetadata(messageId, metadata = {}) {
@@ -5004,108 +4930,15 @@ function blockedBackgroundBrowserActionReason({ task = "", action = {}, target =
 }
 
 function computerUseBlockerFromError(error, context = {}) {
-  const rawMessage = String(error?.message || "Computer Use could not finish that task.").trim();
-  const code = String(error?.code || "").trim();
-  const adapter = context.adapter || {};
-  const messageText = `${rawMessage} ${code}`.toLowerCase();
-  let category = "unknown";
-  let message = rawMessage;
-
-  if (/screen recording|screen capture|capture_failed|capture the screen/i.test(messageText)) {
-    category = "screen_recording";
-    message = "Computer Use could not read the screen. Reopen OpenArgos after granting Screen Recording, then retry the task.";
-  } else if (/accessibility|trusted|input bridge/i.test(messageText)) {
-    category = "accessibility";
-    message = "Computer Use could not use macOS Accessibility control. Reopen OpenArgos after granting Accessibility, then retry the task.";
-  } else if (/api key|model|computer use-capable|provider|openai computer use request|network|could not connect/i.test(messageText)) {
-    category = "runtime";
-  } else if (/not allow|denied|approval|safety check/i.test(messageText)) {
-    category = "approval";
-  } else if (/repeated|without visible progress|without verified progress|blindly|low-progress|address\/search field|model-turn budget|runaway/i.test(messageText)) {
-    category = "no_progress";
-    message = adapter.background
-      ? "Computer Use stopped because the background browser was not showing verified progress after repeated actions."
-      : "Computer Use stopped because the live Mac UI was not showing verified progress after repeated actions.";
-  } else if (/sign-in|sign in|login|log in/i.test(messageText)) {
-    category = "auth_required";
-  } else if (/downloadable image|download_not_found/i.test(messageText)) {
-    category = "not_found";
-  } else if (/click the openargos|scroll the openargos|blind click|usable target|target/i.test(messageText)) {
-    category = "targeting";
-  }
-
-  return {
-    category,
-    code: code || null,
-    message,
-    rawMessage,
-    adapter: adapter.kind || "",
-    background: Boolean(adapter.background),
-    step: Number(context.step || 0) || null,
-    lastStep: context.lastStep || null,
-    task: truncateText(context.approval?.task || "", 260)
-  };
+  return computerUseSafetyGate.blockerFromError(error, context);
 }
 
 function resolveComputerUseCriticalApproval({ decisionId, approvalId, decision }) {
-  const pending = pendingComputerUseCriticalApprovals.get(decisionId);
-  if (!pending || String(pending.approvalId || "") !== String(approvalId || "")) {
-    return false;
-  }
-  pendingComputerUseCriticalApprovals.delete(decisionId);
-  pending.cleanup?.();
-  pending.resolve({
-    decision,
-    decidedAt: new Date().toISOString()
-  });
-  return true;
+  return computerUseSafetyGate.resolveCriticalApproval({ decisionId, approvalId, decision });
 }
 
 function waitForComputerUseCriticalApproval({ sendStream, sendStatus, approval, runControl, risk, stepEntry }) {
-  const decisionId = randomId("cua_critical");
-  sendStatus("Needs approval");
-  presentAmbientWindowForComputerUseApproval();
-  sendStream("computer_risk_approval", {
-    decisionId,
-    approvalId: approval.approvalId || "",
-    sessionId: approval.sessionId || "",
-    title: risk.title || "Approve action?",
-    message: risk.message || "OpenArgos is about to perform an action that may be hard to undo.",
-    category: risk.category || "critical",
-    actionLabel: risk.actionLabel || stepEntry?.label || "Critical action",
-    step: stepEntry?.step || null
-  });
-
-  return new Promise((resolve, reject) => {
-    const signal = runControl?.abortController?.signal;
-    const timeout = setTimeout(() => {
-      pendingComputerUseCriticalApprovals.delete(decisionId);
-      cleanup();
-      const error = new Error("Computer Use stopped because the approval prompt timed out.");
-      error.code = "computer_use_critical_approval_timeout";
-      reject(error);
-    }, computerUseCriticalApprovalTimeoutMs);
-    const cleanup = () => {
-      clearTimeout(timeout);
-      if (signal) signal.removeEventListener("abort", onAbort);
-    };
-    const onAbort = () => {
-      pendingComputerUseCriticalApprovals.delete(decisionId);
-      cleanup();
-      reject(computerUseCancelledError());
-    };
-    if (signal?.aborted || runControl?.cancelled) {
-      onAbort();
-      return;
-    }
-    if (signal) signal.addEventListener("abort", onAbort, { once: true });
-    pendingComputerUseCriticalApprovals.set(decisionId, {
-      approvalId: approval.approvalId || "",
-      resolve,
-      reject,
-      cleanup
-    });
-  });
+  return computerUseSafetyGate.waitForCriticalApproval({ sendStream, sendStatus, approval, runControl, risk, stepEntry });
 }
 
 function extractPublicImageDownloadSubject(task = "") {
@@ -5328,13 +5161,11 @@ async function maybeRunComputerUseFastPath({ approval, adapter, sendStream, send
 }
 
 function computerUseFinalTextLooksLikeModeFailure(text = "") {
-  const normalized = normalizeComputerIntentText(text);
-  return /\b(?:normal chat|not in (?:the )?computer use runner|can'?t actually click|can'?t take control|turn on computer use|start computer use|approve computer use|give me the exact task|ask again|try again so i can operate)\b/.test(normalized);
+  return computerUseExecutor.finalTextLooksLikeModeFailure(text);
 }
 
 function computerUseTaskAllowsReadOnlyCompletion(task = "") {
-  const text = normalizeComputerIntentText(task);
-  return /\b(?:what'?s on my screen|what is on my screen|what do you see|can you see my screen|read (?:the )?screen|describe (?:the )?screen|visible on (?:the )?screen)\b/.test(text);
+  return computerUseExecutor.taskAllowsReadOnlyCompletion(task);
 }
 
 async function runComputerUseSession({ event, approval, runControl = null }) {
@@ -5491,16 +5322,20 @@ async function runComputerUseSession({ event, approval, runControl = null }) {
       if (reasoningStatus) sendStatus(reasoningStatus);
       const calls = extractComputerCalls(response);
       if (!calls.length) {
-        const proposedFinalText = normalizeAmbientResponseText(extractOpenAIText(response));
-        const stoppedWithoutAction = meaningfulActionTotal === 0 && !computerUseTaskAllowsReadOnlyCompletion(approval.task);
-        if (computerUseFinalTextLooksLikeModeFailure(proposedFinalText) || stoppedWithoutAction) {
+        const proposedFinalText = computerUseExecutor.finalTextFromResponse(response);
+        const noOpDecision = computerUseExecutor.shouldRetryNoOp({
+          finalText: proposedFinalText,
+          meaningfulActionTotal,
+          task: approval.task
+        });
+        if (noOpDecision.retry) {
           if (!noOpRetryUsed) {
             noOpRetryUsed = true;
             writeAmbientLog("computer_use_noop_retry", {
               requestId: approval.requestId,
               approvalId: approval.approvalId,
               sessionId: approval.sessionId || null,
-              stoppedWithoutAction,
+              stoppedWithoutAction: noOpDecision.stoppedWithoutAction,
               finalText: truncateText(proposedFinalText, 240)
             });
             response = await callOpenAIComputerResponse({
@@ -6281,14 +6116,16 @@ function memorySaveBlockedResponse(intent = {}) {
   return "I did not save that as memory.";
 }
 
-function detectComputerUseIntent(question, { recentMessages = [] } = {}) {
+function detectComputerUseIntent(question, { recentMessages = [], taskState = null } = {}) {
   const normalized = normalizeComputerIntentText(question);
   if (!normalized || rejectsComputerUseIntent(normalized)) return false;
   if (textLooksLikeComputerUseTask(normalized)) return true;
   if (resolveImageDownloadFollowupTask(question, recentMessages)) return true;
 
   const followupAsksToAct = textLooksLikeComputerUseFollowup(normalized);
-  if (!followupAsksToAct || !Array.isArray(recentMessages) || recentMessages.length === 0) return false;
+  if (!followupAsksToAct) return false;
+  if (taskState?.task || taskState?.goal) return true;
+  if (!Array.isArray(recentMessages) || recentMessages.length === 0) return false;
 
   const recentText = recentMessages
     .slice(-8)
@@ -7010,261 +6847,43 @@ function extractJsonObject(text) {
 }
 
 function shouldResolveComputerUseFollowupWithModel(question, recentMessages = []) {
-  const text = String(question || "").trim();
-  if (!text || text.length > 500) return false;
-  if (rejectsComputerUseIntent(text)) return false;
-  if (textLooksLikeComputerUseTask(text)) return false;
-  if (resolveImageDownloadFollowupTask(text, recentMessages)) return false;
-  return hasRecentComputerUseContext(recentMessages);
+  return computerUsePlanner.shouldResolveFollowupWithModel(question, recentMessages);
 }
 
 function formatComputerUseRoutingMessage(message = {}) {
-  const role = message.role === "assistant"
-    ? "Assistant"
-    : message.role === "user"
-      ? "User"
-      : message?.metadata?.kind === "user_action"
-        ? "User action"
-        : "System";
-  const metadata = message.metadata || {};
-  const tags = [
-    metadata.actionFamily === "computer_use" ? "computer_use" : "",
-    metadata.actionType || ""
-  ].filter(Boolean).join(", ");
-  const suffix = tags ? ` [${tags}]` : "";
-  return `${role}${suffix}: ${truncateText(String(message.text || "").replace(/\s+/g, " ").trim(), 520)}`;
+  return computerUsePlanner.formatRoutingMessage(message);
 }
 
 function buildComputerUseFollowupRoutingPrompt({ question, recentMessages }) {
-  const recent = (Array.isArray(recentMessages) ? recentMessages : [])
-    .slice(-12)
-    .map(formatComputerUseRoutingMessage)
-    .filter(Boolean)
-    .join("\n");
-  return [
-    "You are a routing resolver for a desktop assistant.",
-    "Decide whether the latest user message should continue a previous Computer Use task or should be answered as normal chat.",
-    "",
-    "Choose computer_use only when the latest user message is asking the assistant to operate the computer, browser, app, file system, media app, or continue a previous operation.",
-    "If the latest message is ambiguous but clearly refers to a previous Computer Use operation, rewrite it as one standalone imperative task.",
-    "If it is a normal question, complaint, clarification, thanks, or explanation with no requested operation, choose chat.",
-    "Do not answer the user. Do not mention approvals. Return strict JSON only.",
-    "",
-    "Schema:",
-    "{\"decision\":\"computer_use\"|\"chat\",\"task\":\"standalone task if computer_use, else empty string\",\"reason\":\"short reason\"}",
-    "",
-    `Recent conversation:\n${recent || "None"}`,
-    "",
-    `Latest user message:\n${truncateText(question, 800)}`
-  ].join("\n");
+  return computerUsePlanner.buildFollowupRoutingPrompt({ question, recentMessages });
 }
 
 function latestComputerUseTaskStateForThread(threadId = "") {
-  const id = String(threadId || "").trim();
-  if (!id) return null;
-  const store = readLocalStore();
-  const sessions = Array.isArray(store.computerUseSessions) ? store.computerUseSessions : [];
-  const matching = sessions
-    .filter((session) => String(session?.ambientThreadId || session?.threadId || "") === id)
-    .sort((a, b) => Number(b?.updatedAt || b?.createdAt || 0) - Number(a?.updatedAt || a?.createdAt || 0));
-  const session = matching.find((candidate) => String(candidate?.task || candidate?.goal || "").trim()) || null;
-  if (!session) return null;
-  const metadata = session.metadata && typeof session.metadata === "object" ? session.metadata : {};
-  const blocker = session.blocker || metadata.blocker || null;
-  const stepLog = Array.isArray(metadata.stepLog) ? metadata.stepLog : [];
-  const lastStep = session.lastKnownState && typeof session.lastKnownState === "object"
-    ? session.lastKnownState
-    : stepLog.length
-      ? stepLog.at(-1)
-      : null;
-  return {
-    taskId: session._id || session.id || null,
-    status: String(session.status || "unknown"),
-    goal: String(session.goal || session.task || "").trim(),
-    task: String(session.task || session.goal || "").trim(),
-    adapter: session.adapter || metadata.adapter || "",
-    background: Boolean(session.background || metadata.background),
-    finalText: truncateText(session.finalText || "", 600),
-    errorMessage: truncateText(session.errorMessage || blocker?.message || "", 600),
-    blocker,
-    lastKnownState: {
-      step: Number(lastStep?.step || metadata.steps || 0) || null,
-      label: lastStep?.label || "",
-      status: lastStep?.status || "",
-      app: lastStep?.app || metadata.activeApp || "",
-      windowTitle: lastStep?.windowTitle || metadata.activeWindowTitle || "",
-      url: lastStep?.url || metadata.browserUrl || ""
-    }
-  };
+  return computerUseTaskStore.latestForThread(threadId);
 }
 
 function compactComputerUseTaskStateText(taskState = null) {
-  if (!taskState?.task && !taskState?.goal) return "None";
-  const lines = [
-    `Task id: ${taskState.taskId || "unknown"}`,
-    `Status: ${taskState.status || "unknown"}`,
-    `Goal: ${taskState.goal || taskState.task}`,
-    taskState.adapter ? `Surface: ${taskState.background ? "background_browser" : "live_mac"} (${taskState.adapter})` : "",
-    taskState.finalText ? `Last result: ${taskState.finalText}` : "",
-    taskState.errorMessage ? `Last blocker: ${taskState.errorMessage}` : "",
-    taskState.blocker?.category ? `Blocker category: ${taskState.blocker.category}` : "",
-    taskState.lastKnownState?.label ? `Last step: ${taskState.lastKnownState.label} (${taskState.lastKnownState.status || "unknown"})` : ""
-  ].filter(Boolean);
-  return lines.join("\n");
+  return computerUseTaskStore.compactText(taskState);
 }
 
 function buildAmbientTurnPlannerPrompt({ question, recentMessages, taskState }) {
-  const recent = (Array.isArray(recentMessages) ? recentMessages : [])
-    .slice(-14)
-    .map(formatComputerUseRoutingMessage)
-    .filter(Boolean)
-    .join("\n");
-  return [
-    "You are the first-pass tool planner for OpenArgos, a local Mac assistant.",
-    "Do not answer the user. Decide which route should handle the latest user turn.",
-    "",
-    "Routes:",
-    "- chat: answer normally with the selected language model.",
-    "- computer_use: operate a browser, website, app, file, media app, or the Mac UI.",
-    "- memory: save an explicit durable user memory.",
-    "- settings: answer local app status/settings questions.",
-    "- clarify: ask one short clarification because the action target is genuinely missing.",
-    "",
-    "Computer Use rules:",
-    "- If the latest user turn is a follow-up, pronoun, correction, or nudge that continues a recent Computer Use task, choose computer_use before chat.",
-    "- Write task as one standalone imperative goal. Preserve filenames, services, and constraints from the user.",
-    "- For referential follow-ups, resolve the requested operation against the recent conversation without answering the reference in chat.",
-    "- Do not route complaints, debugging questions, or product feedback to computer_use unless the user asks OpenArgos to operate the Mac/browser/app.",
-    "- Do not tell the user to enable or approve Computer Use. The app will handle availability and approval.",
-    "- Use surface background_browser for public web lookup/download/navigation that does not require the user's logged-in account or native app.",
-    "- Use surface live_mac for signed-in services, personal accounts, current visible browser state, Finder/files, native apps, media apps, and OpenArgos settings.",
-    "",
-    "Return strict JSON only with this schema:",
-    "{\"route\":\"chat|computer_use|memory|settings|clarify\",\"task\":\"standalone task for computer_use, memory text for memory, or empty\",\"goal\":\"short current goal/status label\",\"surface\":\"background_browser|live_mac|none\",\"continuation_task_id\":\"task id if continuing, else empty\",\"clarification\":\"short question if clarify, else empty\",\"reason\":\"short reason\"}",
-    "",
-    `Recent Computer Use task state:\n${compactComputerUseTaskStateText(taskState)}`,
-    "",
-    `Recent conversation:\n${recent || "None"}`,
-    "",
-    `Latest user turn:\n${truncateText(question, 900)}`
-  ].join("\n");
+  return computerUsePlanner.buildTurnPrompt({ question, recentMessages, taskState });
 }
 
 function normalizeAmbientTurnPlan(parsed = {}, { question = "", taskState = null } = {}) {
-  const rawRoute = String(parsed?.route || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
-  const routeAliases = {
-    computer: "computer_use",
-    computeruse: "computer_use",
-    computer_use_task: "computer_use",
-    setting: "settings",
-    settings_status: "settings",
-    memory_save: "memory",
-    ask_clarification: "clarify"
-  };
-  const route = routeAliases[rawRoute] || rawRoute;
-  const allowedRoutes = new Set(["chat", "computer_use", "memory", "settings", "clarify"]);
-  const normalizedRoute = allowedRoutes.has(route) ? route : "chat";
-  const rawSurface = String(parsed?.surface || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
-  const surface = ["background_browser", "live_mac"].includes(rawSurface)
-    ? rawSurface
-    : "none";
-  let task = String(parsed?.task || "").replace(/\s+/g, " ").trim();
-  const goal = String(parsed?.goal || "").replace(/\s+/g, " ").trim();
-  if (normalizedRoute === "computer_use" && !task) {
-    task = goal || String(question || "").trim();
-  }
-  if (normalizedRoute === "memory" && !task) {
-    task = String(parsed?.memory_text || parsed?.memoryText || "").replace(/\s+/g, " ").trim();
-  }
-  const continuationTaskId = String(parsed?.continuation_task_id || parsed?.continuationTaskId || "").trim();
-  return {
-    route: normalizedRoute,
-    task,
-    goal,
-    surface,
-    continuationTaskId,
-    clarification: String(parsed?.clarification || "").replace(/\s+/g, " ").trim(),
-    reason: String(parsed?.reason || "").replace(/\s+/g, " ").trim(),
-    continued: Boolean(continuationTaskId || (normalizedRoute === "computer_use" && taskState?.taskId && /follow|continu|refer|previous|recent|pronoun|nudge/i.test(String(parsed?.reason || ""))))
-  };
+  return computerUsePlanner.normalizeTurnPlan(parsed, { question, taskState });
 }
 
 function fallbackAmbientTurnPlan(question, recentMessages = [], taskState = null) {
-  const memorySaveIntent = detectAmbientMemorySaveIntent(question);
-  if (memorySaveIntent) {
-    return {
-      route: "memory",
-      task: memorySaveIntent.text || "",
-      goal: "Save memory",
-      surface: "none",
-      continuationTaskId: "",
-      clarification: "",
-      reason: "local fallback memory intent"
-    };
-  }
-  if (detectComputerUseStatusQuery(question)) {
-    return {
-      route: "settings",
-      task: "",
-      goal: "Check Computer Use status",
-      surface: "none",
-      continuationTaskId: "",
-      clarification: "",
-      reason: "local fallback settings status"
-    };
-  }
-  if (detectComputerUseIntent(question, { recentMessages })) {
-    const task = resolveComputerUseTask(question, recentMessages, { taskState });
-    return {
-      route: "computer_use",
-      task,
-      goal: task,
-      surface: "none",
-      continuationTaskId: taskState?.taskId || "",
-      clarification: "",
-      reason: "local fallback computer use intent"
-    };
-  }
-  return {
-    route: "chat",
-    task: "",
-    goal: "",
-    surface: "none",
-    continuationTaskId: "",
-    clarification: "",
-    reason: "local fallback chat"
-  };
+  return computerUsePlanner.fallbackTurnPlan(question, recentMessages, taskState);
 }
 
 function looksLikeComputerUseContinuationPhrase(question = "", taskState = null) {
-  if (!taskState?.task && !taskState?.goal) return false;
-  const normalized = normalizeComputerIntentText(question);
-  if (!normalized || normalized.length > 180 || rejectsComputerUseIntent(normalized)) return false;
-  if (/^(?:hi|hello|hey|thanks|thank you|cool|nice|ok|okay)\b/.test(normalized)) return false;
-  const asksAboutBehavior = /^(?:why|how|what|where|when)\b/.test(normalized) &&
-    /\b(?:you|it|that|this|app|openargos|argos|computer\s+use|browser|screen|model|route|planning)\b/.test(normalized);
-  if (asksAboutBehavior && !textLooksLikeComputerUseTask(normalized)) return false;
-  if (textLooksLikeComputerUseFollowup(normalized)) return true;
-  if (/\b(?:it|that|this|same|another|again|redo|retry|now|next|his|her|their|song|track|one)\b/.test(normalized)) {
-    return true;
-  }
-  const wordCount = normalized.split(/\s+/).filter(Boolean).length;
-  const startsAsQuestion = /^(?:why|how|what|where|when|who|is|are|do|does|did|can|could|should|would|will)\b/.test(normalized);
-  return wordCount > 0 && wordCount <= 10 && !startsAsQuestion;
+  return computerUsePlanner.looksLikeContinuationPhrase(question, taskState);
 }
 
 function shouldUseModelAmbientPlanner(question, recentMessages = [], taskState = null, localPlan = null) {
-  if (!question || rejectsComputerUseIntent(question)) return false;
-  if (localPlan?.route === "memory" || localPlan?.route === "settings") return false;
-  if (!taskState?.taskId && !hasRecentComputerUseContext(recentMessages)) return false;
-  if (localPlan?.route === "chat") {
-    return looksLikeComputerUseContinuationPhrase(question, taskState);
-  }
-  if (localPlan?.route === "computer_use") {
-    const directTask = textLooksLikeComputerUseTask(question) || extractPublicImageDownloadSubject(question);
-    return !directTask && looksLikeComputerUseContinuationPhrase(question, taskState);
-  }
-  return false;
+  return computerUsePlanner.shouldUseModelTurnPlanner(question, recentMessages, taskState, localPlan);
 }
 
 async function planAmbientTurnWithModel({ question, recentMessages, taskState, policy, credential, requestId }) {
@@ -8414,43 +8033,27 @@ function sendMainWindowState() {
 }
 
 function computerUseTaskTargetsOpenArgosApp(task = "") {
-  const text = normalizeComputerIntentText(task);
-  if (!/\bopenargos\b/.test(text)) return false;
-  if (/\bambient\s+(?:card|window|panel|message|input)\b/.test(text)) return false;
-  return /\b(app|desktop|settings|setting|tab|model|models|dropdown|account|memory|appearance|theme|general|provider|key|keys)\b/.test(text);
+  return computerUseSurfaceRouter.taskTargetsOpenArgosApp(task);
 }
 
 function computerUseTaskRequiresUserBrowserSession(task = "") {
-  const text = normalizeComputerIntentText(task);
-  if (extractPublicImageDownloadSubject(text) || extractLeadershipRoleQuery(text)) return false;
-  return /\b(doordash|door\s*dash|uber\s*eats|ubereats|instacart|amazon|prime\s*video|primevideo|netflix|hulu|gmail|google\s+docs?|google\s+sheets?|google\s+slides?|calendar|slack|notion|figma|linear|jira|github|stripe|shopify|linkedin|twitter|x\.com|telegram|whatsapp|bank|billing|checkout|cart|order|reorder|re-order|buy|purchase|payment|login|log\s+in|sign\s+in|account)\b/.test(text);
+  return computerUseSurfaceRouter.taskRequiresUserBrowserSession(task);
 }
 
 function computerUseTaskTargetsNativeApp(task = "") {
-  const text = normalizeComputerIntentText(task);
-  if (computerUseTaskTargetsOpenArgosApp(text)) return true;
-  return /\b(finder|dock|desktop|system settings|settings app|terminal|iterm|xcode|cursor|vscode|visual studio code|preview|photos|notes|mail|calendar app|messages|slack app|telegram app|spotify|music|zoom|meet|teams|keynote|pages|numbers|word|excel|powerpoint)\b/.test(text);
+  return computerUseSurfaceRouter.taskTargetsNativeApp(task);
 }
 
 function computerUseTaskTargetsBrowserSession(task = "") {
-  const text = normalizeComputerIntentText(task);
-  return computerUseTaskRequiresUserBrowserSession(text) ||
-    /\b(?:in|inside|using|with|use|open|switch to)\s+(?:chrome|safari|arc|edge|firefox|my browser|current browser|this browser|this tab|current tab)\b/.test(text);
+  return computerUseSurfaceRouter.taskTargetsBrowserSession(task);
 }
 
 function computerUseTaskRequestsBackgroundBrowser(task = "") {
-  const text = normalizeComputerIntentText(task);
-  return /\b(?:in|using|with)\s+(?:the\s+)?(?:background|hidden|isolated)\s+browser\b/.test(text) ||
-    /\b(?:run|do|handle|open)\s+(?:this|that|it|the task)?\s*(?:in\s+)?(?:the\s+)?background\b/.test(text) ||
-    /\bwithout\s+(?:taking\s+over|using)\s+(?:my\s+|the\s+)?(?:screen|chrome|browser|desktop)\b/.test(text) ||
-    /\bdon'?t\s+take\s+over\s+(?:my\s+|the\s+)?(?:screen|chrome|browser|desktop)\b/.test(text);
+  return computerUseSurfaceRouter.taskRequestsBackgroundBrowser(task);
 }
 
 function computerUseTaskLooksLikePublicWebTask(task = "") {
-  const text = normalizeComputerIntentText(task);
-  return /\b(web|website|site|browser|page|google|search|internet|online|wikipedia|youtube|reddit|news)\b/.test(text) ||
-    /\b(?:image|images|picture|pictures|photo|photos|logo|logos|icon|icons|article|bio|biography|profile|public page|public website)\b/.test(text) ||
-    /\b(?:hours?|open now|closest|near me|nearby|location|locations|store|restaurant|directions?|maps?)\b/.test(text);
+  return computerUseSurfaceRouter.taskLooksLikePublicWebTask(task);
 }
 
 function cleanComputerUseEntityText(value = "") {
@@ -8546,65 +8149,11 @@ function initialBackgroundBrowserUrlForTask(task = "") {
 }
 
 function resolveComputerUseAdapterPlan(task = "", context = {}) {
-  const text = normalizeComputerIntentText(task);
-  const hasWebTarget = Boolean(extractComputerUseUrlFromTask(task)) ||
-    Boolean(extractPublicImageDownloadSubject(task)) ||
-    computerUseTaskLooksLikePublicWebTask(text);
-  const mustUseLiveBrowserSession = computerUseTaskTargetsBrowserSession(task);
-  const canUseBackgroundBrowser = (hasWebTarget || computerUseTaskRequestsBackgroundBrowser(task)) &&
-    !computerUseTaskRequiresUserBrowserSession(task) &&
-    !computerUseTaskTargetsNativeApp(task) &&
-    !mustUseLiveBrowserSession;
-  if (canUseBackgroundBrowser) {
-    return {
-      kind: "browser",
-      label: "Background browser",
-      background: true,
-      reason: computerUseTaskRequestsBackgroundBrowser(task)
-        ? "user requested background browser and the task does not require a signed-in browser session"
-        : "public web task without required user-browser session",
-      initialUrl: initialBackgroundBrowserUrlForTask(task)
-    };
-  }
-  return {
-    kind: "native",
-    label: "Live Mac",
-    background: false,
-    reason: computerUseTaskRequiresUserBrowserSession(task)
-      ? "task likely needs the user's signed-in browser or account state"
-      : computerUseTaskTargetsNativeApp(task)
-        ? "task targets a native app or current desktop UI"
-        : "task needs the visible Mac environment",
-    activeApp: context?.activeApp || "",
-    activeWindowTitle: context?.activeWindowTitle || "",
-    browserTitle: context?.browserTitle || "",
-    browserUrl: context?.browserUrl || ""
-  };
+  return computerUseSurfaceRouter.resolveAdapterPlan(task, context);
 }
 
 function resolveComputerUseAdapterPlanForTurn(task = "", context = {}, turnPlan = {}) {
-  if (turnPlan?.surface === "background_browser") {
-    return {
-      kind: "browser",
-      label: "Background browser",
-      background: true,
-      reason: turnPlan.reason || "planner selected public background browser",
-      initialUrl: initialBackgroundBrowserUrlForTask(task)
-    };
-  }
-  if (turnPlan?.surface === "live_mac") {
-    return {
-      kind: "native",
-      label: "Live Mac",
-      background: false,
-      reason: turnPlan.reason || "planner selected live Mac control",
-      activeApp: context?.activeApp || "",
-      activeWindowTitle: context?.activeWindowTitle || "",
-      browserTitle: context?.browserTitle || "",
-      browserUrl: context?.browserUrl || ""
-    };
-  }
-  return resolveComputerUseAdapterPlan(task, context);
+  return computerUseSurfaceRouter.resolveAdapterPlanForTurn(task, context, turnPlan);
 }
 
 function waitForWindowLoaded(win, timeoutMs = 1400) {

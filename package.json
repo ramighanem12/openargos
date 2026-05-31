@@ -20,6 +20,7 @@
   "scripts": {
     "start": "electron .",
     "build:native": "npm install --prefix native/macos-permissions",
+    "eval:computer-use": "node scripts/run-computer-use-evals.js",
     "dist:mac": "bash scripts/build-mac.sh",
     "release:mac": "OPENARGOS_RELEASE_SIGN=1 OPENARGOS_NOTARIZE=1 bash scripts/build-mac.sh"
   },
