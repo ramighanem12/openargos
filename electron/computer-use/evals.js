@@ -1,5 +1,7 @@
 "use strict";
 
+const { createCuaDriverAdapterFactory } = require("./cua-driver-adapter");
+
 function createComputerUseEvalSuite({
   planner,
   executor,
@@ -176,6 +178,64 @@ function createComputerUseEvalSuite({
   add("surface router sends Spotify playback to live Mac", () => {
     const plan = surfaceRouter.resolveAdapterPlan("Play Happy by Pharrell on Spotify.");
     if (plan.kind !== "native" || plan.background) throw new Error(`Expected live Mac, got ${plan.kind}`);
+  });
+
+  add("cua driver selector prefers the pre-ambient active app window", () => {
+    const factory = createCuaDriverAdapterFactory({ enabled: false });
+    const chosen = factory._test.chooseWindow([
+      {
+        pid: 10,
+        window_id: 101,
+        app_name: "OpenArgos Ambient",
+        title: "OpenArgos",
+        z_index: 999,
+        bounds: { width: 640, height: 600 },
+        is_on_screen: true,
+        on_current_space: true
+      },
+      {
+        pid: 20,
+        window_id: 202,
+        app_name: "Google Chrome",
+        title: "Deloitte draft - Superhuman",
+        z_index: 12,
+        bounds: { width: 1320, height: 900 },
+        is_on_screen: true,
+        on_current_space: true
+      }
+    ], {
+      activeApp: "Google Chrome",
+      activeWindowTitle: "Deloitte draft - Superhuman"
+    });
+    if (chosen?.window_id !== 202) throw new Error(`Expected Chrome window, got ${chosen?.app_name || "none"}`);
+  });
+
+  add("cua driver adapter reports unavailable binary instead of silently falling back", async () => {
+    const factory = createCuaDriverAdapterFactory({
+      execFileImpl: async () => {
+        const error = new Error("missing");
+        error.code = "ENOENT";
+        throw error;
+      },
+      log: () => {}
+    });
+    let failed = false;
+    try {
+      await factory.maybeCreateAdapter("Open DoorDash", { kind: "native" }, {});
+    } catch (error) {
+      failed = error?.code === "CUA_DRIVER_UNAVAILABLE";
+    }
+    if (!failed) throw new Error("Expected CUA_DRIVER_UNAVAILABLE when cua-driver is unavailable.");
+  });
+
+  add("cua driver detects explicitly named installed apps without task-specific heuristics", () => {
+    const factory = createCuaDriverAdapterFactory({ enabled: false });
+    if (!factory._test.appNameMentionedInTask("Spotify", "Play Happy by Pharrell on Spotify.")) {
+      throw new Error("Expected Spotify to be detected from the task text.");
+    }
+    if (factory._test.appNameMentionedInTask("Mail", "Write an email that converts well.")) {
+      throw new Error("Expected generic email wording not to force Mail.");
+    }
   });
 
   add("executor retries chat-mode no-op failures", () => {

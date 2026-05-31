@@ -9,7 +9,7 @@ No hosted OpenArgos account is required. Your chats, memories, preferences, and 
 
 - Chat with your own model key
 - Screen-aware answers when you grant Screen Recording permission
-- Computer Use for approved browser/app actions
+- Computer Use for approved browser/app actions, using Cua Driver as the preferred engine when installed
 - A background browser for public web tasks that do not need your logged-in session
 - Voice input with a configured transcription provider
 - Local memories you can turn on/off, edit, or reset
@@ -28,6 +28,11 @@ Supported voice transcription providers:
 
 - OpenAI
 - Groq
+
+Computer Use engines:
+
+- Cua Driver, the preferred engine for local Computer Use when installed
+- Built-in fallback, OpenArgos' older native Computer Use harness for source builds or debugging
 
 ## Requirements
 
@@ -72,6 +77,7 @@ OpenArgos will launch as a normal Mac app and also create a menu bar item.
 3. Pick an LLM model.
 4. Optional: pick a voice transcription route if you want voice input.
 5. Go to `Settings > Permissions` and configure the macOS permissions you want to use.
+6. For Computer Use, go to `Settings > General` and choose a Computer Use engine. Cua is preferred when installed; Built-in fallback is the older OpenArgos harness.
 
 You only need the permissions for the features you turn on:
 
@@ -79,6 +85,8 @@ You only need the permissions for the features you turn on:
 - Accessibility: lets OpenArgos perform approved clicks, typing, and keyboard actions.
 - Microphone: enables voice input.
 - Automation: lets OpenArgos use macOS Apple Events to read active app, window, and browser-tab context when a screen-aware answer or Computer Use task needs it. It is separate from Screen Recording, which is the visual screen permission.
+
+If you use Cua for Computer Use, Cua Driver has its own macOS permission identity. Grant Accessibility and Screen Recording to `Cua Driver` as described below.
 
 If macOS permissions get stuck during local development, remove OpenArgos from the relevant System Settings privacy section and relaunch the app.
 
@@ -97,6 +105,37 @@ Download the logo from a public company website and name the file company-logo.
 ```
 
 Computer Use always runs through the app's approval flow. For risky actions like sending messages, deleting files, posting publicly, purchasing, checkout, billing, or security changes, OpenArgos asks again before continuing.
+
+### Cua Driver
+
+OpenArgos uses [Cua Driver](https://github.com/trycua/cua/tree/main/libs/cua-driver) as the preferred Computer Use engine when it is installed and selected in Settings > General. This is useful for logged-in app tasks, because Cua Driver targets app windows directly instead of relying only on foreground cursor movement.
+
+Install it separately:
+
+```sh
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/libs/cua-driver/scripts/install.sh)"
+```
+
+That installer places `CuaDriver.app` in `/Applications` and symlinks the command at `~/.local/bin/cua-driver`. Then grant permissions to Cua Driver itself:
+
+```sh
+~/.local/bin/cua-driver permissions grant
+```
+
+macOS should show permissions for `Cua Driver`, not OpenArgos and not Terminal. Grant Accessibility and Screen Recording, then verify:
+
+```sh
+~/.local/bin/cua-driver permissions status
+~/.local/bin/cua-driver list-tools
+```
+
+Then restart OpenArgos. In Settings > General, keep Computer Use engine set to Cua. The API key is not a replacement for the local driver; `cua-driver` must be installed on the Mac for Cua-powered local app control to run. If your Cua Computer Use setup requires a Cua API key, paste it under Settings > Models > Provider keys; OpenArgos stores it locally and passes it to Cua as `CUA_API_KEY`.
+
+The Built-in fallback option is not a model. It is OpenArgos' older native Computer Use harness, and it still uses your configured Computer Use model for reasoning. Use it only when Cua Driver is not installed or when debugging:
+
+```sh
+OPENARGOS_COMPUTER_USE_CUA_DRIVER=0 npm start
+```
 
 ## Local Data
 

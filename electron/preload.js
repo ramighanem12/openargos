@@ -26,6 +26,9 @@ contextBridge.exposeInMainWorld("openArgos", {
   getModelKeys: () => ipcRenderer.invoke("model-keys:get"),
   setModelKeyProvider: (provider) => ipcRenderer.invoke("model-keys:set-provider", provider),
   saveModelKey: (payload) => ipcRenderer.invoke("model-keys:save", payload),
+  getComputerUseSettings: () => ipcRenderer.invoke("settings:computer-use:get"),
+  setComputerUseBackend: (backend) => ipcRenderer.invoke("settings:computer-use:set-backend", backend),
+  saveCuaKey: (key) => ipcRenderer.invoke("settings:computer-use:save-cua-key", key),
   getVoiceTranscriptionSettings: () => ipcRenderer.invoke("settings:voice-transcription:get"),
   setVoiceTranscriptionProvider: (provider) => ipcRenderer.invoke("settings:voice-transcription:set-provider", provider),
   onVoiceTranscriptionSettingsChanged: (callback) => {

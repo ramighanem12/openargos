@@ -13,6 +13,7 @@ const { createComputerUseSafetyGate } = require("./computer-use/safety-gate");
 const { createComputerUseSessionRunner } = require("./computer-use/session-runner");
 const { createComputerUseSurfaceRouter } = require("./computer-use/surface-router");
 const { createComputerUseTaskStore } = require("./computer-use/task-store");
+const { createCuaDriverAdapterFactory } = require("./computer-use/cua-driver-adapter");
 
 let mainWindow;
 let ambientWindow;
@@ -84,6 +85,8 @@ const readableModelKeyStorageVersions = new Set([
   localModelKeyStorage,
   "argos-local-aes-256-gcm-v1"
 ]);
+const validComputerUseBackends = new Set(["cua", "built_in"]);
+const defaultComputerUseBackend = "cua";
 const defaultShortcutSettings = {
   newChat: "Control+A",
   voiceRecording: "Alt+M"
@@ -160,6 +163,12 @@ const computerUseSurfaceRouter = createComputerUseSurfaceRouter({
   extractLeadershipRoleQuery,
   extractComputerUseUrlFromTask,
   initialBackgroundBrowserUrlForTask
+});
+const cuaDriverAdapterFactory = createCuaDriverAdapterFactory({
+  taskTargetsOpenArgosApp: computerUseTaskTargetsOpenArgosApp,
+  getApiKey: getStoredCuaApiKey,
+  log: writeAmbientLog,
+  truncateText
 });
 const computerUseSafetyGate = createComputerUseSafetyGate({
   pendingApprovals: pendingComputerUseCriticalApprovals,
@@ -614,6 +623,88 @@ function isMemoryCaptureEnabled() {
 
 function isComputerUseEnabled() {
   return readStoredSettings().userSettings?.computerUseEnabled === true;
+}
+
+function normalizeComputerUseBackend(value = "") {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[-\s]+/g, "_");
+  return validComputerUseBackends.has(normalized) ? normalized : defaultComputerUseBackend;
+}
+
+function getComputerUseBackend(settings = readStoredSettings()) {
+  return normalizeComputerUseBackend(settings.userSettings?.computerUseBackend || settings.computerUseBackend);
+}
+
+function setComputerUseBackend(value = "") {
+  const backend = normalizeComputerUseBackend(value);
+  const settings = readStoredSettings();
+  writeStoredSettings({
+    ...settings,
+    userSettings: {
+      ...(settings.userSettings || {}),
+      computerUseBackend: backend
+    }
+  });
+  return backend;
+}
+
+function currentCuaKeyBucket(inputSettings = readStoredSettings()) {
+  const scope = getLocalStorageScope();
+  const byScope = inputSettings.cuaApiKeyByScope || {};
+  return {
+    scope,
+    record: byScope[scope] || null
+  };
+}
+
+function getStoredCuaApiKey() {
+  return decryptModelApiKey(currentCuaKeyBucket().record);
+}
+
+function summarizeCuaApiKey(record) {
+  return summarizeSecret(record);
+}
+
+function readComputerUseSettings() {
+  const settings = readStoredSettings();
+  const { scope, record } = currentCuaKeyBucket(settings);
+  return {
+    ok: true,
+    backend: getComputerUseBackend(settings),
+    defaultBackend: defaultComputerUseBackend,
+    validBackends: Array.from(validComputerUseBackends),
+    scope,
+    cuaApiKey: summarizeCuaApiKey(record)
+  };
+}
+
+function validateCuaApiKey(key = "") {
+  const value = String(key || "").trim();
+  if (!value) return { ok: true, key: "" };
+  if (value.length < 12) {
+    return { ok: false, message: "Enter a valid Cua API key." };
+  }
+  return { ok: true, key: value };
+}
+
+function saveCuaApiKey(rawKey = "") {
+  const validation = validateCuaApiKey(rawKey);
+  if (!validation.ok) return { ok: false, code: "invalid_cua_key", message: validation.message };
+  const settings = readStoredSettings();
+  const scope = getLocalStorageScope();
+  const byScope = { ...(settings.cuaApiKeyByScope || {}) };
+  if (!validation.key) {
+    delete byScope[scope];
+  } else {
+    byScope[scope] = {
+      ...encryptModelApiKey(validation.key),
+      updatedAt: new Date().toISOString()
+    };
+  }
+  writeStoredSettings({
+    ...settings,
+    cuaApiKeyByScope: byScope
+  });
+  return readComputerUseSettings();
 }
 
 function ambientBoundsForSize(width, height, { display = screen.getPrimaryDisplay(), inset = 8 } = {}) {
@@ -5617,12 +5708,32 @@ async function maybeCreateCdpBrowserComputerUseAdapter(task = "", plan = {}, con
   return createCdpBrowserComputerUseAdapter(task, plan, target);
 }
 
+async function maybeCreateCuaDriverComputerUseAdapter(task = "", plan = {}, context = {}) {
+  if (getComputerUseBackend() !== "cua") return null;
+  try {
+    return await cuaDriverAdapterFactory.maybeCreateAdapter(task, plan, context);
+  } catch (error) {
+    writeAmbientLog("computer_use_cua_driver_adapter_failed", {
+      task: truncateText(task, 180),
+      ...diagnosticErrorDetails(error)
+    });
+    throw error;
+  }
+}
+
 async function createComputerUseAdapter(task = "", contextOrPlan = {}) {
   const plan = contextOrPlan?.kind
     ? contextOrPlan
     : resolveComputerUseAdapterPlan(task, contextOrPlan);
   const cdpAdapter = await maybeCreateCdpBrowserComputerUseAdapter(task, plan, contextOrPlan);
   if (cdpAdapter) return cdpAdapter;
+  const cuaDriverAdapter = await maybeCreateCuaDriverComputerUseAdapter(task, plan, contextOrPlan);
+  if (cuaDriverAdapter) return cuaDriverAdapter;
+  if (getComputerUseBackend() === "cua" && plan.kind === "native" && !computerUseTaskTargetsOpenArgosApp(task)) {
+    const error = new Error("Cua Driver is selected, but OpenArgos could not create a Cua target window. Use Settings > General > Computer Use engine > Built-in fallback only if you want the older native harness.");
+    error.code = "CUA_DRIVER_NO_TARGET";
+    throw error;
+  }
   return plan.kind === "browser"
     ? createBackgroundBrowserComputerUseAdapter(task, plan)
     : createNativeComputerUseAdapter(task);
@@ -5658,6 +5769,13 @@ function computerUseSystemInstructions(adapter = {}) {
         "For public background tasks, never click Sign in, Log in, account, or profile controls unless the user explicitly asked to sign in. Ignore those controls and use public results instead.",
         "If an image task describes a person by role or title, such as CEO/founder/head of a company, first resolve the current person from current web results or an official source, then search for and download that person's image. Do not use old autocomplete suggestions or stale role holders."
       ]
+    : adapter?.kind === "cua_driver"
+      ? [
+          "Execution surface: you are operating the user's logged-in Mac app window through Cua Driver. Cua Driver posts input to the target app/window without relying on the user's visible cursor.",
+          "The screenshot is cropped to the selected target window. Coordinates are window-local. Use the visible controls and the Cua Driver window map in the prompt to choose precise actions.",
+          "Prefer direct keyboard and text-entry actions when a field is clearly focused or visible. For rich web apps and email composers, identify the actual subject/title and body editor before typing.",
+          "If the selected window is not the right app or the required logged-in state is not present, stop and state that concrete blocker. Do not keep clicking unrelated windows."
+        ]
     : [
         "Execution surface: you are operating the user's live Mac UI through screenshots and Accessibility/input events. This may require foreground control.",
         "Do not claim native app control can run in the background. Use direct, fast, visible UI actions and stop if a required app or control is unavailable.",
@@ -9919,6 +10037,7 @@ ipcMain.handle("local:user-settings:get", async () => {
   const settings = { ...(readStoredSettings().userSettings || {}) };
   settings.memoryCaptureEnabled = settings.memoryCaptureEnabled !== false;
   settings.voiceTranscriptionProvider = normalizeVoiceTranscriptionProvider(settings.voiceTranscriptionProvider);
+  settings.computerUseBackend = getComputerUseBackend();
   if (typeof settings.ambientSoundEnabled === "boolean") setAmbientSoundEnabled(settings.ambientSoundEnabled);
   if (settings.ambientSoundType) setAmbientSoundType(settings.ambientSoundType);
   if (typeof settings.muteMusicWhileDictating === "boolean") setMuteMusicWhileDictating(settings.muteMusicWhileDictating);
@@ -9928,9 +10047,12 @@ ipcMain.handle("local:user-settings:get", async () => {
 
 ipcMain.handle("local:user-settings:upsert", async (_event, settings = {}) => {
   const allowed = {};
-  ["theme", "primaryModel", "realtimeVoiceEnabled", "showMenuBar", "ambientSoundEnabled", "ambientSoundType", "muteMusicWhileDictating", "screenAwarenessEnabled", "computerUseEnabled", "memoryCaptureEnabled", "voiceTranscriptionProvider", "shortcuts"].forEach((key) => {
+  ["theme", "primaryModel", "realtimeVoiceEnabled", "showMenuBar", "ambientSoundEnabled", "ambientSoundType", "muteMusicWhileDictating", "screenAwarenessEnabled", "computerUseEnabled", "computerUseBackend", "memoryCaptureEnabled", "voiceTranscriptionProvider", "shortcuts"].forEach((key) => {
     if (settings[key] !== undefined) allowed[key] = settings[key];
   });
+  if (allowed.computerUseBackend !== undefined) {
+    allowed.computerUseBackend = normalizeComputerUseBackend(allowed.computerUseBackend);
+  }
   if (allowed.voiceTranscriptionProvider !== undefined) {
     allowed.voiceTranscriptionProvider = normalizeVoiceTranscriptionProvider(allowed.voiceTranscriptionProvider);
   }
@@ -9996,6 +10118,12 @@ ipcMain.handle("model-keys:get", () => ({
 
 ipcMain.handle("settings:voice-transcription:get", () => getVoiceTranscriptionSettings());
 ipcMain.handle("settings:voice-transcription:set-provider", async (_event, provider) => setVoiceTranscriptionProvider(provider));
+ipcMain.handle("settings:computer-use:get", () => readComputerUseSettings());
+ipcMain.handle("settings:computer-use:set-backend", (_event, backend) => {
+  setComputerUseBackend(backend);
+  return readComputerUseSettings();
+});
+ipcMain.handle("settings:computer-use:save-cua-key", (_event, key) => saveCuaApiKey(key));
 
 ipcMain.handle("model-keys:set-provider", async (_event, provider) => {
   const activeProvider = normalizeModelKeyProvider(provider);

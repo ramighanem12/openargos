@@ -26,7 +26,13 @@ function createComputerUseSafetyGate({
     let category = "unknown";
     let message = rawMessage;
 
-    if (/screen recording|screen capture|capture_failed|capture the screen/i.test(messageText)) {
+    if (/cua_driver_unavailable|cua driver.*could not find|spawn cua-driver enoent/i.test(messageText)) {
+      category = "runtime";
+      message = "Computer Use is set to Cua, but Cua Driver is not installed or OpenArgos cannot find it. Install Cua Driver, restart OpenArgos, then retry.";
+    } else if (/cua_driver_no_target|cua driver.*target/i.test(messageText)) {
+      category = "targeting";
+      message = "Computer Use is set to Cua, but Cua Driver could not identify a usable target app window.";
+    } else if (/screen recording|screen capture|capture_failed|capture the screen/i.test(messageText)) {
       category = "screen_recording";
       message = "Computer Use could not read the screen. Reopen OpenArgos after granting Screen Recording, then retry the task.";
     } else if (/accessibility|trusted|input bridge/i.test(messageText)) {

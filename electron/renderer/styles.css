@@ -2927,7 +2927,8 @@ h1 {
 }
 
 .model-select-button [data-model-label],
-.model-select-button [data-voice-model-label] {
+.model-select-button [data-voice-model-label],
+.model-select-button [data-computer-use-engine-label] {
   display: block;
   flex: 1 1 auto;
   min-width: 0;
@@ -3091,6 +3092,11 @@ h1 {
 
 .model-option.ambient-sound-type-option.active:hover {
   background: rgba(255, 255, 255, 0.06);
+}
+
+.model-option[data-computer-use-engine-option] {
+  grid-template-columns: minmax(0, 1fr) 18px;
+  column-gap: 12px;
 }
 
 .byok-panel {
@@ -3476,6 +3482,13 @@ h1 {
   height: 16px;
   display: block;
   object-fit: cover;
+}
+
+.cua-logo img {
+  width: 16px;
+  height: 16px;
+  display: block;
+  object-fit: contain;
 }
 
 .text-logo {

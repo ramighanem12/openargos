@@ -263,6 +263,7 @@ function forwardChatSidebarWheel(event) {
 function positionFloatingMenus() {
   positionModelMenu();
   positionVoiceModelMenu();
+  positionComputerUseEngineMenu();
   positionAmbientSoundTypeMenu();
   positionNewMenu();
   positionChatActionMenu();
@@ -863,6 +864,11 @@ let localModelState = {
   providerKeys: {},
   canManage: true
 };
+let computerUseSettingsState = {
+  backend: "cua",
+  cuaApiKey: { hasKey: false, lastFour: null }
+};
+let cuaKeySaveTimer = 0;
 const accountRow = document.querySelector(".account-row");
 const accountAvatar = document.querySelector("[data-account-avatar]");
 const accountName = document.querySelector("[data-account-name]");
@@ -890,6 +896,13 @@ const computerUseControl = document.querySelector("[data-computer-use-control]")
 const computerUseSwitch = document.querySelector("[data-computer-use-switch]");
 const computerUseTooltip = document.querySelector("[data-computer-use-tooltip]");
 const computerUseToggle = document.querySelector("[data-computer-use-toggle]");
+const computerUseEngineTrigger = document.querySelector("[data-computer-use-engine-trigger]");
+const computerUseEngineMenu = document.querySelector("[data-computer-use-engine-menu]");
+const computerUseEngineLabel = document.querySelector("[data-computer-use-engine-label]");
+const computerUseEngineOptions = Array.from(document.querySelectorAll("[data-computer-use-engine-option]"));
+const cuaKeyInput = document.querySelector("[data-cua-key-input]");
+const cuaKeyRemove = document.querySelector("[data-cua-key-remove]");
+const cuaKeyStatus = document.querySelector("[data-cua-key-status]");
 const ambientSoundToggle = document.querySelector("[data-ambient-sound-toggle]");
 const ambientSoundTypeRow = document.querySelector("[data-ambient-sound-type-row]");
 const ambientSoundTypeSelect = document.querySelector("[data-ambient-sound-type-select]");
@@ -908,6 +921,7 @@ const ambientSoundTypeKey = "ambientSoundType";
 const muteMusicWhileDictatingKey = "muteMusicWhileDictating";
 const screenAwarenessKey = "screenAwarenessEnabled";
 const computerUseKey = "computerUseEnabled";
+const computerUseBackendKey = "computerUseBackend";
 const memoryCaptureKey = "memoryCaptureEnabled";
 const shortcutSettingsKey = "shortcuts";
 const defaultShortcutSettings = {
@@ -1566,6 +1580,124 @@ function renderComputerUseAvailability() {
   }
 }
 
+function normalizeComputerUseBackend(value) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[-\s]+/g, "_");
+  return normalized === "built_in" ? "built_in" : "cua";
+}
+
+function computerUseBackendLabel(backend) {
+  return normalizeComputerUseBackend(backend) === "built_in" ? "Built-in fallback" : "Cua";
+}
+
+function renderComputerUseBackend() {
+  const backend = normalizeComputerUseBackend(computerUseSettingsState.backend || getScopedStorageItem(computerUseBackendKey));
+  computerUseSettingsState.backend = backend;
+  if (computerUseEngineLabel) computerUseEngineLabel.textContent = computerUseBackendLabel(backend);
+  computerUseEngineOptions.forEach((option) => {
+    option.classList.toggle("active", normalizeComputerUseBackend(option.dataset.computerUseEngineOption) === backend);
+  });
+}
+
+function renderCuaKeyState() {
+  const keyState = computerUseSettingsState.cuaApiKey || {};
+  if (cuaKeyInput && !cuaKeyInput.dataset.dirty) {
+    cuaKeyInput.placeholder = keyState.hasKey
+      ? (keyState.lastFour ? `Saved key ending in ${keyState.lastFour}` : "Saved Cua key")
+      : "Cua API key";
+  }
+  if (cuaKeyRemove) {
+    cuaKeyRemove.hidden = !keyState.hasKey;
+    cuaKeyRemove.disabled = !keyState.hasKey;
+  }
+  if (cuaKeyStatus && !cuaKeyInput?.dataset.dirty) {
+    setByokStatus(cuaKeyStatus, keyState.hasKey ? "Saved" : "Not saved", keyState.hasKey ? "saved" : "", keyState.hasKey ? "check" : "");
+  }
+}
+
+async function loadComputerUseSettings() {
+  try {
+    const result = await window.openArgos?.getComputerUseSettings?.();
+    if (result?.ok) {
+      computerUseSettingsState = {
+        backend: normalizeComputerUseBackend(result.backend),
+        cuaApiKey: result.cuaApiKey || { hasKey: false, lastFour: null }
+      };
+      setScopedStorageItem(computerUseBackendKey, computerUseSettingsState.backend);
+    }
+  } catch {
+    computerUseSettingsState = {
+      ...computerUseSettingsState,
+      backend: normalizeComputerUseBackend(getScopedStorageItem(computerUseBackendKey))
+    };
+  }
+  renderComputerUseBackend();
+  renderCuaKeyState();
+}
+
+async function setComputerUseBackend(backend) {
+  const nextBackend = normalizeComputerUseBackend(backend);
+  computerUseSettingsState = {
+    ...computerUseSettingsState,
+    backend: nextBackend
+  };
+  setScopedStorageItem(computerUseBackendKey, nextBackend);
+  renderComputerUseBackend();
+  try {
+    const result = await window.openArgos?.setComputerUseBackend?.(nextBackend);
+    if (result?.ok) {
+      computerUseSettingsState = {
+        ...computerUseSettingsState,
+        backend: normalizeComputerUseBackend(result.backend),
+        cuaApiKey: result.cuaApiKey || computerUseSettingsState.cuaApiKey
+      };
+      setScopedStorageItem(computerUseBackendKey, computerUseSettingsState.backend);
+      renderComputerUseBackend();
+      renderCuaKeyState();
+    }
+  } catch {
+    // Local scoped state remains the offline fallback.
+  }
+}
+
+function validateCuaKey(value = "") {
+  const key = String(value || "").trim();
+  if (!key) return { ok: true, key: "" };
+  if (key.length < 12) return { ok: false, message: "Enter a valid Cua API key." };
+  return { ok: true, key };
+}
+
+async function saveCuaKey() {
+  if (!cuaKeyInput || !cuaKeyInput.dataset.dirty) return;
+  const validation = validateCuaKey(cuaKeyInput.value);
+  if (!validation.ok) {
+    setByokStatus(cuaKeyStatus, validation.message, "warning", "triangleAlert");
+    return;
+  }
+  try {
+    const result = await window.openArgos?.saveCuaKey?.(validation.key);
+    if (!result?.ok) throw new Error(result?.message || "Could not save Cua key.");
+    computerUseSettingsState = {
+      ...computerUseSettingsState,
+      backend: normalizeComputerUseBackend(result.backend || computerUseSettingsState.backend),
+      cuaApiKey: result.cuaApiKey || { hasKey: false, lastFour: null }
+    };
+    cuaKeyInput.value = "";
+    delete cuaKeyInput.dataset.dirty;
+    renderComputerUseBackend();
+    renderCuaKeyState();
+  } catch (error) {
+    setByokStatus(cuaKeyStatus, error?.message || "Could not save Cua key.", "warning", "triangleAlert");
+  }
+}
+
+function scheduleCuaKeySave() {
+  if (!cuaKeyInput) return;
+  cuaKeyInput.dataset.dirty = "true";
+  setByokStatus(cuaKeyStatus, "Saving...");
+  window.clearTimeout(cuaKeySaveTimer);
+  cuaKeySaveTimer = window.setTimeout(saveCuaKey, 650);
+}
+
 function positionNewChatDisabledTooltip() {
   if (!newChatControl || !newChatDisabledTooltip) return;
   const rect = newChatControl.getBoundingClientRect();
@@ -2136,6 +2268,12 @@ function syncUserScopedState() {
     computerUseToggle.checked = getScopedStorageItem(computerUseKey) === "true";
     renderComputerUseAvailability();
   }
+  computerUseSettingsState = {
+    ...computerUseSettingsState,
+    backend: normalizeComputerUseBackend(getScopedStorageItem(computerUseBackendKey))
+  };
+  renderComputerUseBackend();
+  renderCuaKeyState();
   if (screenAwarenessToggle) {
     screenAwarenessToggle.checked = getScopedStorageItem(screenAwarenessKey) !== "false";
   }
@@ -2155,6 +2293,7 @@ function syncUserScopedState() {
   };
   renderLocalModelState();
   void initializeModelState();
+  void loadComputerUseSettings();
 }
 
 async function syncLocalSettings() {
@@ -2200,6 +2339,14 @@ async function syncLocalSettings() {
       computerUseToggle.checked = result.settings.computerUseEnabled;
       setScopedStorageItem(computerUseKey, String(result.settings.computerUseEnabled));
       renderComputerUseAvailability();
+    }
+    if (result.settings.computerUseBackend !== undefined) {
+      computerUseSettingsState = {
+        ...computerUseSettingsState,
+        backend: normalizeComputerUseBackend(result.settings.computerUseBackend)
+      };
+      setScopedStorageItem(computerUseBackendKey, computerUseSettingsState.backend);
+      renderComputerUseBackend();
     }
     if (typeof result.settings.screenAwarenessEnabled === "boolean" && screenAwarenessToggle) {
       screenAwarenessToggle.checked = result.settings.screenAwarenessEnabled;
@@ -3641,6 +3788,7 @@ renderMemories();
 
 if (modelMenu) document.body.append(modelMenu);
 if (voiceModelMenu) document.body.append(voiceModelMenu);
+if (computerUseEngineMenu) document.body.append(computerUseEngineMenu);
 if (ambientSoundTypeMenu) document.body.append(ambientSoundTypeMenu);
 
 function positionFixedMenu(trigger, menu, fallbackWidth = 248) {
@@ -3663,6 +3811,10 @@ function positionVoiceModelMenu() {
   positionFixedMenu(voiceModelTrigger, voiceModelMenu, 286);
 }
 
+function positionComputerUseEngineMenu() {
+  positionFixedMenu(computerUseEngineTrigger, computerUseEngineMenu, 248);
+}
+
 function positionAmbientSoundTypeMenu() {
   positionFixedMenu(ambientSoundTypeTrigger, ambientSoundTypeMenu, 168);
 }
@@ -3675,6 +3827,10 @@ function closeVoiceModelMenu() {
   if (voiceModelMenu) voiceModelMenu.hidden = true;
 }
 
+function closeComputerUseEngineMenu() {
+  if (computerUseEngineMenu) computerUseEngineMenu.hidden = true;
+}
+
 function closeAmbientSoundTypeMenu() {
   if (ambientSoundTypeMenu) ambientSoundTypeMenu.hidden = true;
 }
@@ -3682,6 +3838,7 @@ function closeAmbientSoundTypeMenu() {
 function openModelMenu() {
   if (!modelMenu) return;
   closeVoiceModelMenu();
+  closeComputerUseEngineMenu();
   closeAmbientSoundTypeMenu();
   modelMenu.hidden = false;
   positionModelMenu();
@@ -3690,15 +3847,26 @@ function openModelMenu() {
 function openVoiceModelMenu() {
   if (!voiceModelMenu) return;
   closeModelMenu();
+  closeComputerUseEngineMenu();
   closeAmbientSoundTypeMenu();
   voiceModelMenu.hidden = false;
   positionVoiceModelMenu();
+}
+
+function openComputerUseEngineMenu() {
+  if (!computerUseEngineMenu) return;
+  closeModelMenu();
+  closeVoiceModelMenu();
+  closeAmbientSoundTypeMenu();
+  computerUseEngineMenu.hidden = false;
+  positionComputerUseEngineMenu();
 }
 
 function openAmbientSoundTypeMenu() {
   if (!ambientSoundTypeMenu || ambientSoundTypeRow?.hidden) return;
   closeModelMenu();
   closeVoiceModelMenu();
+  closeComputerUseEngineMenu();
   ambientSoundTypeMenu.hidden = false;
   positionAmbientSoundTypeMenu();
 }
@@ -3755,6 +3923,43 @@ voiceModelTrigger?.addEventListener("click", () => {
   }
 });
 
+computerUseEngineTrigger?.addEventListener("click", () => {
+  if (!computerUseEngineMenu) return;
+  if (computerUseEngineMenu.hidden) {
+    openComputerUseEngineMenu();
+  } else {
+    closeComputerUseEngineMenu();
+  }
+});
+
+computerUseEngineOptions.forEach((option) => {
+  option.addEventListener("click", () => {
+    void setComputerUseBackend(option.dataset.computerUseEngineOption);
+    closeComputerUseEngineMenu();
+  });
+});
+
+cuaKeyInput?.addEventListener("input", scheduleCuaKeySave);
+cuaKeyInput?.addEventListener("blur", () => {
+  window.clearTimeout(cuaKeySaveTimer);
+  void saveCuaKey();
+});
+cuaKeyInput?.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    cuaKeyInput.blur();
+  }
+});
+cuaKeyRemove?.addEventListener("click", () => {
+  window.clearTimeout(cuaKeySaveTimer);
+  if (cuaKeyInput) {
+    cuaKeyInput.value = "";
+    cuaKeyInput.dataset.dirty = "true";
+  }
+  setByokStatus(cuaKeyStatus, "Removing...");
+  void saveCuaKey();
+});
+
 newChatControl?.addEventListener("pointerenter", showNewChatDisabledTooltip);
 newChatControl?.addEventListener("pointermove", positionNewChatDisabledTooltip);
 newChatControl?.addEventListener("pointerleave", hideNewChatDisabledTooltip);
@@ -3779,6 +3984,7 @@ ambientSoundTypeOptions.forEach((option) => {
 document.addEventListener("click", (event) => {
   if (!modelSelect?.contains(event.target) && !modelMenu?.contains(event.target)) closeModelMenu();
   if (!voiceModelSelect?.contains(event.target) && !voiceModelMenu?.contains(event.target)) closeVoiceModelMenu();
+  if (!computerUseEngineTrigger?.contains(event.target) && !computerUseEngineMenu?.contains(event.target)) closeComputerUseEngineMenu();
   if (!ambientSoundTypeSelect?.contains(event.target) && !ambientSoundTypeMenu?.contains(event.target)) closeAmbientSoundTypeMenu();
   if (!newMenuTrigger?.contains(event.target) && !newMenu?.contains(event.target)) closeNewMenu();
   if (!chatActionMenu?.contains(event.target) && !event.target.closest?.("[data-chat-actions-for]")) closeChatActionMenu();
@@ -3790,6 +3996,7 @@ document.addEventListener("keydown", (event) => {
     closeChatActionMenu();
     closeModelMenu();
     closeVoiceModelMenu();
+    closeComputerUseEngineMenu();
     closeAmbientSoundTypeMenu();
   }
 });
