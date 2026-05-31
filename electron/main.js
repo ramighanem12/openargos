@@ -101,6 +101,9 @@ const computerUseActionMicroDelayMaxMs = 15;
 const computerUseLocalVerifyWaitMs = 85;
 const computerUseLocalRetryLimit = 1;
 const computerUseDevToolsPorts = [9222, 9223, 9224, 9333];
+const computerUseNativeAccessibilityMaxTextLength = 9000;
+const computerUseNativeOcrEnabled = process.env.OPENARGOS_COMPUTER_USE_NATIVE_OCR !== "0";
+const computerUseNativeOcrMaxTextLength = 7000;
 const ambientAgentMaxOutputTokens = 2400;
 const ambientSoundTypes = new Set([
   "default",
@@ -1601,7 +1604,99 @@ async function getFrontmostMacContext() {
     activeWindowTitle: activeWindowTitle || "",
     windowFrame: Object.values(frame).every(Number.isFinite) && frame.width > 0 && frame.height > 0
       ? frame
-      : null
+    : null
+  };
+}
+
+function normalizeMacSurfaceText(value = "") {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function compactComputerVisibleText(value = "", limit = 3000) {
+  return truncateText(
+    String(value || "")
+      .replace(/\s+/g, " ")
+      .trim(),
+    limit
+  );
+}
+
+function mergeComputerVisibleText(parts = [], limit = 7000) {
+  const seen = new Set();
+  const rows = [];
+  for (const part of parts) {
+    const text = String(part || "").replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    const key = text.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push(text);
+  }
+  return truncateText(rows.join("\n"), limit);
+}
+
+function captureNativeAccessibilityContext(focusContext = {}, options = {}) {
+  const permissions = getMacOSPermissions();
+  if (typeof permissions?.captureAccessibilityText !== "function") return null;
+  try {
+    const maxTextLength = Math.max(1000, Math.min(60000, Number(options.maxTextLength || computerUseNativeAccessibilityMaxTextLength)));
+    const result = permissions.captureAccessibilityText({
+      maxApps: 18,
+      maxWindowsPerApp: 4,
+      maxNodesPerWindow: 1400,
+      maxDepth: 14,
+      maxTextLength,
+      appBlockList: []
+    });
+    const apps = Array.isArray(result?.apps) ? result.apps : [];
+    if (!apps.length) return null;
+    const activeAppKey = normalizeMacSurfaceText(focusContext.activeApp);
+    const activeTitleKey = normalizeMacSurfaceText(focusContext.activeWindowTitle);
+    const activeApp = apps.find((item) => normalizeMacSurfaceText(item?.app) === activeAppKey) ||
+      apps.find((item) => activeAppKey && normalizeMacSurfaceText(item?.app).includes(activeAppKey)) ||
+      apps[0];
+    const windows = Array.isArray(activeApp?.windows) ? activeApp.windows : [];
+    const orderedWindows = [...windows].sort((a, b) => {
+      const aTitle = normalizeMacSurfaceText(a?.title);
+      const bTitle = normalizeMacSurfaceText(b?.title);
+      const aScore = activeTitleKey && aTitle.includes(activeTitleKey) ? 0 : 1;
+      const bScore = activeTitleKey && bTitle.includes(activeTitleKey) ? 0 : 1;
+      return aScore - bScore;
+    });
+    const visibleText = mergeComputerVisibleText(
+      orderedWindows
+        .slice(0, 3)
+        .map((windowInfo) => compactComputerVisibleText(windowInfo?.text || windowInfo?.title || "", Math.ceil(maxTextLength / 2))),
+      maxTextLength
+    );
+    if (!visibleText) return null;
+    return {
+      source: "accessibility",
+      app: activeApp?.app || focusContext.activeApp || "",
+      windowTitle: orderedWindows[0]?.title || focusContext.activeWindowTitle || "",
+      visibleText,
+      textHash: stableComputerStateHash({ visibleText }),
+      appCount: apps.length,
+      windowCount: windows.length
+    };
+  } catch (error) {
+    writeAmbientLog("computer_use_accessibility_context_failed", diagnosticErrorDetails(error));
+    return null;
+  }
+}
+
+async function getNativeComputerUseFocusContext() {
+  const context = await getFrontmostMacContext().catch(() => ({}));
+  const accessibility = captureNativeAccessibilityContext(context);
+  if (!accessibility?.visibleText) return context;
+  return {
+    ...context,
+    visibleText: accessibility.visibleText,
+    accessibility
   };
 }
 
@@ -1743,13 +1838,56 @@ function contextLooksLikeOpenArgos(context) {
 }
 
 function nativeImageToComputerDataUrl(image) {
+  return nativeImageToComputerPayload(image).dataUrl;
+}
+
+function nativeImageToComputerPayload(image) {
   try {
     const jpeg = image.toJPEG(computerUseScreenshotJpegQuality);
-    if (jpeg?.length) return `data:image/jpeg;base64,${jpeg.toString("base64")}`;
+    if (jpeg?.length) {
+      return {
+        dataUrl: `data:image/jpeg;base64,${jpeg.toString("base64")}`,
+        buffer: jpeg,
+        contentType: "image/jpeg"
+      };
+    }
   } catch {
     // Fall back to PNG if this Electron build cannot encode JPEG.
   }
-  return image.toDataURL();
+  const dataUrl = image.toDataURL();
+  const parsed = bufferFromImageDataUrl(dataUrl);
+  return {
+    dataUrl,
+    buffer: parsed?.buffer || null,
+    contentType: parsed?.contentType || "image/png"
+  };
+}
+
+function recognizeNativeComputerImageText(buffer) {
+  if (!computerUseNativeOcrEnabled || !buffer?.length) return null;
+  const permissions = getMacOSPermissions();
+  if (typeof permissions?.recognizeTextInImage !== "function") return null;
+  try {
+    const result = permissions.recognizeTextInImage({
+      data: buffer,
+      maxTextLength: computerUseNativeOcrMaxTextLength,
+      maxObservations: 700,
+      minimumConfidence: 0.18
+    });
+    const text = compactComputerVisibleText(result?.text || "", computerUseNativeOcrMaxTextLength);
+    if (!text) return null;
+    return {
+      source: result?.source || "apple_vision",
+      text,
+      textHash: stableComputerStateHash({ text }),
+      observationCount: Number(result?.observationCount || 0) || 0,
+      imageWidth: Number(result?.imageWidth || 0) || null,
+      imageHeight: Number(result?.imageHeight || 0) || null
+    };
+  } catch (error) {
+    writeAmbientLog("computer_use_ocr_failed", diagnosticErrorDetails(error));
+    return null;
+  }
 }
 
 function validComputerUseCropFrame(frame, display) {
@@ -2021,8 +2159,19 @@ async function captureComputerScreenDataUrl(options = {}) {
     : { image, bounds: primary.bounds, cropped: false };
   image = croppedCapture.image;
   const imageSize = image.getSize();
+  const payload = nativeImageToComputerPayload(image);
+  const ocr = recognizeNativeComputerImageText(payload.buffer);
+  const nextFocusContext = {
+    ...(focusContext || {}),
+    visibleText: mergeComputerVisibleText([
+      focusContext?.visibleText,
+      ocr?.text
+    ], 9000),
+    ocrText: ocr?.text || "",
+    ocr
+  };
   const capture = {
-    dataUrl: nativeImageToComputerDataUrl(image),
+    dataUrl: payload.dataUrl,
     image: { width: imageSize.width, height: imageSize.height },
     display: {
       id: primary.id,
@@ -2035,7 +2184,9 @@ async function captureComputerScreenDataUrl(options = {}) {
       },
       scaleFactor: primary.scaleFactor
     },
-    focusContext: focusContext || null,
+    focusContext: nextFocusContext,
+    ocrText: ocr?.text || "",
+    ocr,
     cropped: Boolean(croppedCapture.cropped)
   };
   writeAmbientLog("computer_use_capture_completed", {
@@ -2043,6 +2194,8 @@ async function captureComputerScreenDataUrl(options = {}) {
     width: imageSize.width,
     height: imageSize.height,
     cropped: Boolean(croppedCapture.cropped),
+    ocrTextLength: ocr?.text?.length || 0,
+    ocrObservationCount: ocr?.observationCount || 0,
     focusedApp: focusContext?.activeApp || null,
     focusedWindowTitle: focusContext?.activeWindowTitle || null
   });
@@ -2534,6 +2687,7 @@ function computerUseTaskStateText(taskState = null) {
     `Goal: ${taskState.goal || taskState.task}`,
     taskState.finalText ? `Last result: ${taskState.finalText}` : "",
     taskState.errorMessage ? `Last blocker: ${taskState.errorMessage}` : "",
+    taskState.blocker?.category ? `Blocker category: ${taskState.blocker.category}` : "",
     taskState.lastKnownState?.label ? `Last step: ${taskState.lastKnownState.label} (${taskState.lastKnownState.status || "unknown"})` : ""
   ].filter(Boolean).join("\n");
 }
@@ -2552,7 +2706,7 @@ function computerCaptureContextText(capture) {
     Array.isArray(focus.savedDownloads) && focus.savedDownloads.length
       ? `Background browser saved downloads:\n${focus.savedDownloads.map((item) => item?.path || "").filter(Boolean).join("\n")}`
       : "",
-    focus.visibleText ? `Visible page text:\n${truncateText(focus.visibleText, 1800)}` : "",
+    focus.visibleText ? `Detected UI text:\n${truncateText(focus.visibleText, 2400)}` : "",
     frame ? `Focused window frame: x=${Math.round(frame.x)}, y=${Math.round(frame.y)}, w=${Math.round(frame.width)}, h=${Math.round(frame.height)}` : "",
     capture?.adapter?.background
       ? "Screenshot shows only the hidden OpenArgos background browser, not the user's foreground Mac screen."
@@ -2629,13 +2783,18 @@ async function executeComputerAction(action, capture, { task = "" } = {}) {
   throw new Error(`Unsupported Computer Use action: ${action?.type || "unknown"}.`);
 }
 
-async function nativeComputerUseStateFingerprint() {
+async function nativeComputerUseStateFingerprint(capture = null) {
   const context = await getFrontmostMacContext().catch(() => ({}));
+  const accessibility = captureNativeAccessibilityContext(context, { maxTextLength: 6000 });
   return stableComputerStateHash({
     kind: "native",
     app: context.activeApp || "",
     title: context.activeWindowTitle || "",
-    frame: context.windowFrame || null
+    frame: context.windowFrame || null,
+    accessibilityTextHash: accessibility?.textHash || "",
+    captureTextHash: stableComputerStateHash({
+      text: capture?.focusContext?.visibleText || capture?.ocrText || ""
+    })
   });
 }
 
@@ -2650,7 +2809,7 @@ function createNativeComputerUseAdapter(task = "") {
     background: false,
     requiresScreenRecording: true,
     requiresAccessibility: true,
-    verificationStrength: "weak",
+    verificationStrength: "medium",
     async prepare() {
       if (computerUseTaskTargetsBrowserSession(task)) {
         await activateBrowserForComputerUse(task);
@@ -2659,7 +2818,7 @@ function createNativeComputerUseAdapter(task = "") {
       }
     },
     async getFocusContext() {
-      return await getFrontmostMacContext().catch(() => ({}));
+      return await getNativeComputerUseFocusContext();
     },
     async capture({ focusContext } = {}) {
       return await captureComputerScreenDataUrl({ focusContext });
@@ -2667,8 +2826,8 @@ function createNativeComputerUseAdapter(task = "") {
     async describeTarget(action, capture) {
       return describeComputerActionTarget(action, capture);
     },
-    async stateFingerprint() {
-      return await nativeComputerUseStateFingerprint();
+    async stateFingerprint(capture) {
+      return await nativeComputerUseStateFingerprint(capture);
     },
     async applyInterceptors() {
       return await applyNativeComputerUseInterceptors();
@@ -3436,12 +3595,25 @@ async function backgroundBrowserStateFingerprint(win) {
             160
           )
         : "";
+      const images = Array.from(document.images || [])
+        .slice(0, 40)
+        .map((image) => [
+          clean(image.alt || image.title || "", 80),
+          clean(image.currentSrc || image.src || "", 160),
+          Math.round(image.naturalWidth || 0),
+          Math.round(image.naturalHeight || 0)
+        ].join(":"))
+        .join("|");
       return {
         url: location.href || "",
         title: document.title || "",
+        readyState: document.readyState || "",
         active,
+        scrollX: Math.round(window.scrollX || 0),
+        scrollY: Math.round(window.scrollY || 0),
         text: clean(document.body && document.body.innerText ? document.body.innerText : "", 1200),
-        controls: controlText
+        controls: controlText,
+        images
       };
     })()
   `, true).catch(() => null);
@@ -4617,6 +4789,50 @@ function blockedBackgroundBrowserActionReason({ task = "", action = {}, target =
   return "";
 }
 
+function computerUseBlockerFromError(error, context = {}) {
+  const rawMessage = String(error?.message || "Computer Use could not finish that task.").trim();
+  const code = String(error?.code || "").trim();
+  const adapter = context.adapter || {};
+  const messageText = `${rawMessage} ${code}`.toLowerCase();
+  let category = "unknown";
+  let message = rawMessage;
+
+  if (/screen recording|screen capture|capture_failed|capture the screen/i.test(messageText)) {
+    category = "screen_recording";
+    message = "Computer Use could not read the screen. Reopen OpenArgos after granting Screen Recording, then retry the task.";
+  } else if (/accessibility|trusted|input bridge/i.test(messageText)) {
+    category = "accessibility";
+    message = "Computer Use could not use macOS Accessibility control. Reopen OpenArgos after granting Accessibility, then retry the task.";
+  } else if (/api key|model|computer use-capable|provider|openai computer use request|network|could not connect/i.test(messageText)) {
+    category = "runtime";
+  } else if (/not allow|denied|approval|safety check/i.test(messageText)) {
+    category = "approval";
+  } else if (/repeated|without visible progress|without verified progress|blindly|low-progress|address\/search field|model-turn budget|runaway/i.test(messageText)) {
+    category = "no_progress";
+    message = adapter.background
+      ? "Computer Use stopped because the background browser was not showing verified progress after repeated actions."
+      : "Computer Use stopped because the live Mac UI was not showing verified progress after repeated actions.";
+  } else if (/sign-in|sign in|login|log in/i.test(messageText)) {
+    category = "auth_required";
+  } else if (/downloadable image|download_not_found/i.test(messageText)) {
+    category = "not_found";
+  } else if (/click the openargos|scroll the openargos|blind click|usable target|target/i.test(messageText)) {
+    category = "targeting";
+  }
+
+  return {
+    category,
+    code: code || null,
+    message,
+    rawMessage,
+    adapter: adapter.kind || "",
+    background: Boolean(adapter.background),
+    step: Number(context.step || 0) || null,
+    lastStep: context.lastStep || null,
+    task: truncateText(context.approval?.task || "", 260)
+  };
+}
+
 function resolveComputerUseCriticalApproval({ decisionId, approvalId, decision }) {
   const pending = pendingComputerUseCriticalApprovals.get(decisionId);
   if (!pending || String(pending.approvalId || "") !== String(approvalId || "")) {
@@ -5390,6 +5606,9 @@ async function runComputerUseSession({ event, approval, runControl = null }) {
             const postActionWaitMs = computerUsePostActionWaitMs(action, nextAction);
             if (postActionWaitMs > 0) await sleepForComputerUse(postActionWaitMs, runControl);
             assertComputerUseNotCancelled(runControl);
+            stepEntry.verified = Boolean(executionResult?.verified);
+            stepEntry.retried = Boolean(executionResult?.retried);
+            stepEntry.verificationStrength = adapter.verificationStrength || "unknown";
             stepEntry.status = "succeeded";
             sendStream("computer_action", { action: stepEntry });
             void updateComputerUseUserActionSteps(approval, computerUseSteps);
@@ -5417,7 +5636,10 @@ async function runComputerUseSession({ event, approval, runControl = null }) {
               app: frontmost.activeApp || undefined,
               windowTitle: frontmost.activeWindowTitle || undefined,
               display: latestCapture.display,
-              action
+              action,
+              verified: Boolean(executionResult?.verified),
+              retried: Boolean(executionResult?.retried),
+              verificationStrength: adapter.verificationStrength || "unknown"
             });
           } catch (actionError) {
             const actionCancelled = actionError?.code === "computer_use_cancelled";
@@ -5671,7 +5893,15 @@ async function runComputerUseSession({ event, approval, runControl = null }) {
       });
       throw error;
     }
-    const errorText = error?.message || "Computer Use could not finish that task.";
+    const blocker = computerUseBlockerFromError(error, {
+      approval,
+      adapter,
+      step,
+      lastStep: computerUseSteps.at(-1) || null
+    });
+    error.computerUseBlocker = blocker;
+    error.publicMessage = blocker.message;
+    const errorText = blocker.message || error?.message || "Computer Use could not finish that task.";
     writeAmbientLog("computer_use_failed", {
       requestId: approval.requestId,
       approvalId: approval.approvalId,
@@ -5681,6 +5911,7 @@ async function runComputerUseSession({ event, approval, runControl = null }) {
       adapter: adapter.kind,
       background: Boolean(adapter.background),
       step,
+      blocker,
       errorMessage: errorText,
       ...diagnosticErrorDetails(error)
     });
@@ -5688,9 +5919,14 @@ async function runComputerUseSession({ event, approval, runControl = null }) {
       sessionId: approval.sessionId,
       status: "failed",
       errorMessage: errorText,
+      blocker,
       metadata: {
+        steps: step,
+        stepLog: computerUseSteps,
         adapter: adapter.kind,
-        background: Boolean(adapter.background)
+        background: Boolean(adapter.background),
+        blocker,
+        failedAt: new Date().toISOString()
       }
     });
     void logModelUsageEvent({
@@ -6612,6 +6848,7 @@ function latestComputerUseTaskStateForThread(threadId = "") {
   const session = matching.find((candidate) => String(candidate?.task || candidate?.goal || "").trim()) || null;
   if (!session) return null;
   const metadata = session.metadata && typeof session.metadata === "object" ? session.metadata : {};
+  const blocker = session.blocker || metadata.blocker || null;
   const stepLog = Array.isArray(metadata.stepLog) ? metadata.stepLog : [];
   const lastStep = session.lastKnownState && typeof session.lastKnownState === "object"
     ? session.lastKnownState
@@ -6626,7 +6863,8 @@ function latestComputerUseTaskStateForThread(threadId = "") {
     adapter: session.adapter || metadata.adapter || "",
     background: Boolean(session.background || metadata.background),
     finalText: truncateText(session.finalText || "", 600),
-    errorMessage: truncateText(session.errorMessage || "", 600),
+    errorMessage: truncateText(session.errorMessage || blocker?.message || "", 600),
+    blocker,
     lastKnownState: {
       step: Number(lastStep?.step || metadata.steps || 0) || null,
       label: lastStep?.label || "",
@@ -6647,6 +6885,7 @@ function compactComputerUseTaskStateText(taskState = null) {
     taskState.adapter ? `Surface: ${taskState.background ? "background_browser" : "live_mac"} (${taskState.adapter})` : "",
     taskState.finalText ? `Last result: ${taskState.finalText}` : "",
     taskState.errorMessage ? `Last blocker: ${taskState.errorMessage}` : "",
+    taskState.blocker?.category ? `Blocker category: ${taskState.blocker.category}` : "",
     taskState.lastKnownState?.label ? `Last step: ${taskState.lastKnownState.label} (${taskState.lastKnownState.status || "unknown"})` : ""
   ].filter(Boolean);
   return lines.join("\n");
@@ -6672,7 +6911,7 @@ function buildAmbientTurnPlannerPrompt({ question, recentMessages, taskState }) 
     "Computer Use rules:",
     "- If the latest user turn is a follow-up, pronoun, correction, or nudge that continues a recent Computer Use task, choose computer_use before chat.",
     "- Write task as one standalone imperative goal. Preserve filenames, services, and constraints from the user.",
-    "- For referential follow-ups, resolve against the recent conversation without answering the relationship in chat. Example shape: \"Download a photo of Donald Trump's wife\".",
+    "- For referential follow-ups, resolve the requested operation against the recent conversation without answering the reference in chat.",
     "- Do not route complaints, debugging questions, or product feedback to computer_use unless the user asks OpenArgos to operate the Mac/browser/app.",
     "- Do not tell the user to enable or approve Computer Use. The app will handle availability and approval.",
     "- Use surface background_browser for public web lookup/download/navigation that does not require the user's logged-in account or native app.",
@@ -6784,7 +7023,7 @@ function looksLikeComputerUseContinuationPhrase(question = "", taskState = null)
     /\b(?:you|it|that|this|app|openargos|argos|computer\s+use|browser|screen|model|route|planning)\b/.test(normalized);
   if (asksAboutBehavior && !textLooksLikeComputerUseTask(normalized)) return false;
   if (textLooksLikeComputerUseFollowup(normalized)) return true;
-  if (/\b(?:it|that|this|same|another|again|redo|retry|now|next|his|her|their|wife|husband|partner|ceo|founder|song|track|one)\b/.test(normalized)) {
+  if (/\b(?:it|that|this|same|another|again|redo|retry|now|next|his|her|their|song|track|one)\b/.test(normalized)) {
     return true;
   }
   const wordCount = normalized.split(/\s+/).filter(Boolean).length;
@@ -10478,7 +10717,8 @@ ipcMain.handle("ambient:computer-approve", async (event, payload = {}) => {
       }
     });
   } catch (error) {
-    const message = error?.message || "Computer Use could not finish that task.";
+    const blocker = error?.computerUseBlocker || null;
+    const message = error?.publicMessage || blocker?.message || error?.message || "Computer Use could not finish that task.";
     if (error?.code === "computer_use_cancelled") {
       writeAmbientLog("computer_use_approval_handler_stopped", {
         requestId: approval.requestId,
@@ -10498,6 +10738,7 @@ ipcMain.handle("ambient:computer-approve", async (event, payload = {}) => {
       approvalId,
       threadId: approval.threadId,
       sessionId: approval.sessionId || null,
+      blocker,
       message,
       ...diagnosticErrorDetails(error)
     });
@@ -10512,7 +10753,8 @@ ipcMain.handle("ambient:computer-approve", async (event, payload = {}) => {
       contextSnapshotId: approval.contextSnapshotId,
       metadata: {
         requestId: approval.requestId,
-        computerUseSessionId: approval.sessionId
+        computerUseSessionId: approval.sessionId,
+        computerUseBlocker: blocker
       }
     });
     notifyMainWindow("ambient:history-changed", { threadId: approval.threadId });

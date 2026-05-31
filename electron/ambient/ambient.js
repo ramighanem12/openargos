@@ -2463,8 +2463,8 @@ function showComputerUseCriticalApproval(payload = {}) {
   }
   if (openDraftButton) openDraftButton.textContent = "Approve";
   status.textContent = "Needs approval";
-  status.classList.add("shimmer");
-  status.classList.remove("done");
+  status.classList.remove("shimmer", "done");
+  if (actions) actions.hidden = false;
   autoScrollToBottom = true;
   void revealActionsAfterGrow({ follow: true }).then(() => updateScrollState());
 }
