@@ -3,6 +3,7 @@
 function createComputerUseEvalSuite({
   planner,
   executor,
+  actionVerifier,
   surfaceRouter,
   safetyGate,
   detectCriticalAction,
@@ -69,6 +70,27 @@ function createComputerUseEvalSuite({
       task: "Download a photo of Sam Altman"
     });
     if (!decision.retry || !decision.stoppedWithoutAction) throw new Error("Expected no-op retry decision.");
+  });
+
+  add("action verifier batches address-bar navigation safely", () => {
+    if (!actionVerifier?.safeActionBatch) return;
+    const actions = [
+      { type: "keypress", keys: ["COMMAND", "L"] },
+      { type: "type", text: "https://example.com" },
+      { type: "keypress", keys: ["ENTER"] },
+      { type: "click", x: 10, y: 10 }
+    ];
+    const batch = actionVerifier.safeActionBatch(actions);
+    if (batch.length !== 3) throw new Error(`Expected 3-action navigation batch, got ${batch.length}`);
+  });
+
+  add("action verifier does not batch unrelated clicks", () => {
+    if (!actionVerifier?.safeActionBatch) return;
+    const batch = actionVerifier.safeActionBatch([
+      { type: "click", x: 10, y: 10 },
+      { type: "click", x: 30, y: 30 }
+    ]);
+    if (batch.length !== 1) throw new Error(`Expected one click, got ${batch.length}`);
   });
 
   add("safety gate identifies delete approval", () => {

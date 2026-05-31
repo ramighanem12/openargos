@@ -2,6 +2,7 @@
 "use strict";
 
 const { createComputerUseEvalSuite } = require("../electron/computer-use/evals");
+const { createComputerUseActionVerifier } = require("../electron/computer-use/action-verifier");
 const { createComputerUseExecutor } = require("../electron/computer-use/executor");
 const { createComputerUsePlanner } = require("../electron/computer-use/planner");
 const { createComputerUseSafetyGate } = require("../electron/computer-use/safety-gate");
@@ -144,9 +145,17 @@ async function main() {
     extractOpenAIText: (response) => String(response?.output_text || ""),
     truncateText
   });
+  const actionVerifier = createComputerUseActionVerifier({
+    normalizeComputerActionType: (action) => String(action?.type || "").toLowerCase().replace(/-/g, "_"),
+    normalizedComputerActionKeys: (action) => (Array.isArray(action.keys) ? action.keys : [action.key || action.text].filter(Boolean))
+      .map((key) => String(key || "").toUpperCase().replace("ENTER", "RETURN"))
+      .filter(Boolean),
+    fastMode: true
+  });
   const suite = createComputerUseEvalSuite({
     planner,
     executor,
+    actionVerifier,
     surfaceRouter,
     safetyGate,
     detectCriticalAction,

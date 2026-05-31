@@ -1207,6 +1207,67 @@ napi_value PerformActionAtPoint(napi_env env, napi_callback_info info) {
   return result;
 }
 
+napi_value SetFocusedValueIfEmpty(napi_env env, napi_callback_info info) {
+  size_t argc = 1;
+  napi_value args[1];
+  napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+  napi_value result;
+  napi_create_object(env, &result);
+  SetBool(env, result, "ok", false);
+  SetBool(env, result, "found", false);
+
+  if (argc < 1) {
+    SetString(env, result, "error", "setFocusedValueIfEmpty requires a string.");
+    return result;
+  }
+  size_t length = 0;
+  napi_get_value_string_utf8(env, args[0], nullptr, 0, &length);
+  std::vector<char> buffer(length + 1);
+  napi_get_value_string_utf8(env, args[0], buffer.data(), buffer.size(), &length);
+  std::string utf8(buffer.data(), length);
+  NSString *string = [[NSString alloc] initWithBytes:utf8.data() length:utf8.size() encoding:NSUTF8StringEncoding];
+
+  if (!AXIsProcessTrusted()) {
+    SetString(env, result, "error", "Accessibility is not trusted.");
+    [string release];
+    return result;
+  }
+
+  AXUIElementRef systemWide = AXUIElementCreateSystemWide();
+  AXUIElementRef focused = nullptr;
+  AXError focusError = AXUIElementCopyAttributeValue(systemWide, kAXFocusedUIElementAttribute, reinterpret_cast<CFTypeRef *>(&focused));
+  if (systemWide) CFRelease(systemWide);
+  if (focusError != kAXErrorSuccess || !focused) {
+    SetInt(env, result, "errorCode", static_cast<int32_t>(focusError));
+    [string release];
+    return result;
+  }
+
+  SetBool(env, result, "found", true);
+  const std::string role = AXStringAttribute(focused, kAXRoleAttribute);
+  SetString(env, result, "role", role.c_str());
+  const std::string currentValue = AXStringAttribute(focused, kAXValueAttribute);
+  SetInt(env, result, "previousLength", static_cast<int32_t>(currentValue.size()));
+  if (!currentValue.empty()) {
+    SetBool(env, result, "skipped", true);
+    SetString(env, result, "reason", "focused value is not empty");
+    CFRelease(focused);
+    [string release];
+    return result;
+  }
+
+  AXError setError = AXUIElementSetAttributeValue(focused, kAXValueAttribute, string);
+  if (setError == kAXErrorSuccess) {
+    SetBool(env, result, "ok", true);
+  } else {
+    SetInt(env, result, "errorCode", static_cast<int32_t>(setError));
+  }
+  CFRelease(focused);
+  [string release];
+  return result;
+}
+
 napi_value StartShortcutMonitor(napi_env env, napi_callback_info info) {
   size_t argc = 2;
   napi_value args[2];
@@ -1424,6 +1485,7 @@ napi_value Init(napi_env env, napi_value exports) {
     {"typeText", nullptr, TypeText, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"describeElementAtPoint", nullptr, DescribeElementAtPoint, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"performActionAtPoint", nullptr, PerformActionAtPoint, nullptr, nullptr, nullptr, napi_default, nullptr},
+    {"setFocusedValueIfEmpty", nullptr, SetFocusedValueIfEmpty, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"startShortcutMonitor", nullptr, StartShortcutMonitor, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"stopShortcutMonitor", nullptr, StopShortcutMonitor, nullptr, nullptr, nullptr, napi_default, nullptr},
     {"startVoiceCapture", nullptr, StartVoiceCapture, nullptr, nullptr, nullptr, napi_default, nullptr},
