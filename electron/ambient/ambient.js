@@ -91,6 +91,7 @@ let pendingComputerUseCriticalApproval = null;
 let queuedFollowupSubmitOptions = null;
 let activeComputerUseActionItem = null;
 let activeComputerUseApprovalId = null;
+let pendingComputerUseGoal = "";
 const completedComputerUseApprovalIds = new Set();
 let streamingMessage = null;
 let streamingContent = null;
@@ -3056,7 +3057,6 @@ function updateComputerUseCurrentStep(item, stepsInput) {
   const displayStep = steps.find((step) => step.status === "running" || step.status === "needs_approval") ||
     steps.at(-1) ||
     (isActive ? { step: 0, label: "Starting computer use", status: "running", errorMessage: "" } : null);
-  const displayText = computerUseStepText(displayStep);
   const shouldShow = Boolean(displayStep && (
     isActive ||
     hasFailedStep ||
@@ -3064,6 +3064,9 @@ function updateComputerUseCurrentStep(item, stepsInput) {
   ));
   const isSettledProblem = ["failed", "cancelled", "denied"].includes(displayStep?.status);
   const isLive = isActive && !hasFailedStep && !isSettledProblem;
+  const displayText = isLive && displayStep?.status !== "needs_approval" && item.dataset.goal
+    ? item.dataset.goal
+    : computerUseStepText(displayStep);
 
   current.hidden = !shouldShow;
   current.classList.toggle("running", Boolean(isLive));
@@ -3204,9 +3207,40 @@ function restoreComputerUseStopFailed(item) {
   }, 1200);
 }
 
+function settleComputerUseStoppedUi(item = findComputerUseActionItem()) {
+  hideComputerUseCriticalApproval();
+  hideComputerUseApproval();
+  if (item) {
+    clearActiveComputerUseActionItem({ settleRunningAs: "cancelled" });
+  }
+  setThinking(false);
+  setFollowupBusy(false);
+  status.textContent = "Stopped";
+  status.classList.remove("shimmer", "done");
+  actions.hidden = true;
+  activeAskRequestId = null;
+  void settleAssistantCompletionLayout().then(() => revealFollowupAfterGrow({ follow: true }));
+}
+
+function clearStaleAmbientActions() {
+  hideComputerUseCriticalApproval();
+  hideComputerUseApproval();
+  setFollowupBusy(false);
+  actions.hidden = true;
+  status.classList.remove("shimmer");
+  if (!status.textContent || /opening draft/i.test(status.textContent)) {
+    status.textContent = "Ready";
+  }
+  void settleAssistantCompletionLayout().then(() => revealFollowupAfterGrow({ follow: true }));
+}
+
 async function requestComputerUseStop(item = findComputerUseActionItem()) {
   const approvalId = item?.dataset.approvalId || activeComputerUseApprovalId;
-  if (!approvalId || item?.classList.contains("is-stopping")) return;
+  if (!approvalId) {
+    clearStaleAmbientActions();
+    return;
+  }
+  if (item?.classList.contains("is-stopping")) return;
   if (
     pendingComputerUseCriticalApproval &&
     String(pendingComputerUseCriticalApproval.approvalId || "") === String(approvalId || "")
@@ -3223,7 +3257,9 @@ async function requestComputerUseStop(item = findComputerUseActionItem()) {
   const result = await window.ambient?.stopComputerUse?.({ approvalId });
   if (!result?.stopped) {
     restoreComputerUseStopFailed(item);
+    return;
   }
+  settleComputerUseStoppedUi(item);
 }
 
 function appendUserActionMessage(message, { current = false, expanded = false } = {}) {
@@ -3285,7 +3321,7 @@ function appendUserActionMessage(message, { current = false, expanded = false } 
   return item;
 }
 
-function appendLocalComputerUseAction(actionType, { expanded = false, approvalId = null } = {}) {
+function appendLocalComputerUseAction(actionType, { expanded = false, approvalId = null, goal = "" } = {}) {
   const item = appendUserActionMessage({
     text: actionType === "computer_use_approved" ? "Allowed computer use" : "Cancelled computer use",
     metadata: {
@@ -3294,6 +3330,8 @@ function appendLocalComputerUseAction(actionType, { expanded = false, approvalId
     }
   }, { current: true, expanded });
   if (approvalId) item.dataset.approvalId = approvalId;
+  const goalText = String(goal || pendingComputerUseGoal || "").trim();
+  if (goalText) item.dataset.goal = goalText;
   if (actionType === "computer_use_approved") setActiveComputerUseActionItem(item, { approvalId });
   autoScrollToBottom = true;
   resizeToContent({ force: true });
@@ -3318,8 +3356,12 @@ function updateActiveComputerUseAction(action) {
       }
     }, { current: true, expanded: false });
     item.dataset.approvalId = approvalId;
+    const goalText = String(action?.goal || pendingComputerUseGoal || "").trim();
+    if (goalText) item.dataset.goal = goalText;
     setActiveComputerUseActionItem(item, { approvalId });
   }
+  const goalText = String(action?.goal || pendingComputerUseGoal || "").trim();
+  if (goalText) activeComputerUseActionItem.dataset.goal = goalText;
   if (activeComputerUseActionItem.dataset.runState === "complete") {
     return;
   }
@@ -3657,6 +3699,9 @@ window.ambient?.onAskStream?.((payload) => {
   }
 
   if (payload.type === "route") {
+    pendingComputerUseGoal = payload.mode === "computer_use"
+      ? String(payload.goal || "").trim()
+      : "";
     status.textContent = payload.background
       ? "Preparing background browser"
       : payload.webSearch
@@ -3678,8 +3723,10 @@ window.ambient?.onAskStream?.((payload) => {
     pendingComputerUseApproval = {
       approvalId: payload.approvalId,
       sessionId: payload.sessionId,
-      task: payload.task
+      task: payload.task,
+      goal: payload.goal
     };
+    pendingComputerUseGoal = String(payload.goal || payload.task || pendingComputerUseGoal || "").trim();
     return;
   }
 
@@ -3932,7 +3979,11 @@ async function runApprovedComputerUse(approval, { alwaysAllow = false } = {}) {
   activeComputerUseApprovalId = approval?.approvalId || null;
   hideComputerUseApproval();
   hideFollowup();
-  appendLocalComputerUseAction("computer_use_approved", { expanded: false, approvalId: activeComputerUseApprovalId });
+  appendLocalComputerUseAction("computer_use_approved", {
+    expanded: false,
+    approvalId: activeComputerUseApprovalId,
+    goal: approval?.goal || approval?.task || ""
+  });
   status.textContent = "Controlling Mac";
   status.classList.add("shimmer");
   status.classList.remove("done");
@@ -3996,13 +4047,7 @@ openDraftButton?.addEventListener("click", async () => {
     return;
   }
 
-  status.textContent = "Opening draft";
-  status.classList.add("shimmer");
-  status.classList.remove("done");
-  actions.hidden = true;
-  hideFollowup();
-  resizeToContent();
-  showWords("No draft is available to open.");
+  clearStaleAmbientActions();
 });
 
 followup?.addEventListener("submit", async (event) => {
@@ -4737,6 +4782,10 @@ window.ambient?.onVoiceShortcut?.((payload = {}) => {
 });
 window.ambient?.onComputerStopShortcut?.((payload = {}) => {
   const item = findComputerUseActionItem(payload.approvalId);
+  if (payload?.stopped) {
+    settleComputerUseStoppedUi(item);
+    return;
+  }
   markComputerUseStopping(item);
 });
 

@@ -31,8 +31,31 @@ const activeComputerUseRuns = new Map();
 
 const rootDir = path.join(__dirname, "..");
 const packageMetadata = require(path.join(rootDir, "package.json"));
-const appIconPath = path.join(rootDir, "Runner", "Assets", "AppIcon.png");
-const dockIconPath = path.join(rootDir, "Runner", "Assets", "DockIcon.png");
+function firstExistingPath(candidates = []) {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    try {
+      if (fs.existsSync(candidate)) return candidate;
+    } catch {
+      // Keep walking fallbacks.
+    }
+  }
+  return candidates.find(Boolean) || "";
+}
+
+const packagedIconPath = process.resourcesPath
+  ? path.join(process.resourcesPath, "icon.icns")
+  : "";
+const appIconPath = firstExistingPath([
+  path.join(rootDir, "Runner", "Assets", "AppIcon.png"),
+  path.join(rootDir, "Runner", "Assets", "AppIcon.icns"),
+  packagedIconPath
+]);
+const dockIconPath = firstExistingPath([
+  path.join(rootDir, "Runner", "Assets", "DockIcon.png"),
+  path.join(rootDir, "Runner", "Assets", "DockIcon.icns"),
+  packagedIconPath
+]);
 const menuBarIconPath = path.join(rootDir, "electron", "ambient", "assets", "AppIcon.png");
 const {
   providers: modelProviders,
@@ -2502,6 +2525,19 @@ function computerUseRecentConversationText(messages = []) {
     : "Recent chat context for resolving follow-ups/pronouns: none";
 }
 
+function computerUseTaskStateText(taskState = null) {
+  if (!taskState?.task && !taskState?.goal) return "Current Computer Use task state: none";
+  return [
+    "Current Computer Use task state:",
+    `Task id: ${taskState.taskId || "unknown"}`,
+    `Status: ${taskState.status || "unknown"}`,
+    `Goal: ${taskState.goal || taskState.task}`,
+    taskState.finalText ? `Last result: ${taskState.finalText}` : "",
+    taskState.errorMessage ? `Last blocker: ${taskState.errorMessage}` : "",
+    taskState.lastKnownState?.label ? `Last step: ${taskState.lastKnownState.label} (${taskState.lastKnownState.status || "unknown"})` : ""
+  ].filter(Boolean).join("\n");
+}
+
 function computerCaptureContextText(capture) {
   const focus = capture?.focusContext || {};
   const frame = focus.windowFrame;
@@ -4308,6 +4344,24 @@ function localUpdateComputerUseSession(payload = {}) {
   return result;
 }
 
+function localUpdateComputerUseTaskState(approval = {}, stepEntry = {}, status = "running") {
+  if (!approval?.sessionId) return null;
+  return localUpdateComputerUseSession({
+    sessionId: approval.sessionId,
+    status,
+    lastKnownState: {
+      step: stepEntry.step || null,
+      label: stepEntry.label || "",
+      status: stepEntry.status || status,
+      app: stepEntry.app || "",
+      windowTitle: stepEntry.windowTitle || "",
+      surface: stepEntry.surface || "",
+      url: stepEntry.url || "",
+      updatedAt: new Date().toISOString()
+    }
+  });
+}
+
 function localRecordComputerUseAction(payload = {}) {
   const now = Date.now();
   const doc = {
@@ -4532,9 +4586,7 @@ function detectComputerUseCriticalAction({ task = "", action = {}, target = null
   if (!actionCanCommitCriticalChange(action, target)) return null;
   const directText = criticalActionText({ task: "", action, target, frontmost, reasoningStatus });
   const contextualText = criticalActionText({ task, action, target, frontmost, reasoningStatus });
-  const type = normalizeComputerActionType(action);
-  const category = criticalActionCategory(directText, action) ||
-    (type === "keypress" ? criticalActionCategory(contextualText, action) : null);
+  const category = criticalActionCategory(directText, action);
   if (!category) return null;
   const targetLabel = target?.label ? `"${target.label}"` : "this action";
   const appName = frontmost.activeApp || frontmost.browserTitle || "the current surface";
@@ -4582,6 +4634,7 @@ function resolveComputerUseCriticalApproval({ decisionId, approvalId, decision }
 function waitForComputerUseCriticalApproval({ sendStream, sendStatus, approval, runControl, risk, stepEntry }) {
   const decisionId = randomId("cua_critical");
   sendStatus("Needs approval");
+  presentAmbientWindowForComputerUseApproval();
   sendStream("computer_risk_approval", {
     decisionId,
     approvalId: approval.approvalId || "",
@@ -4973,6 +5026,8 @@ async function runComputerUseSession({ event, approval, runControl = null }) {
                 "",
                 computerUseRecentConversationText(approval.recentMessages),
                 "",
+                computerUseTaskStateText(approval.taskState),
+                "",
                 computerUseMemoryContextText(approval.memories),
                 "",
                 computerCaptureContextText(initialCapture),
@@ -5097,6 +5152,7 @@ async function runComputerUseSession({ event, approval, runControl = null }) {
           const stepEntry = {
             step,
             approvalId: approval.approvalId || null,
+            goal: approval.goal || approval.task || "",
             label: summarizeComputerAction(action, frontmost, {
               task: approval.task,
               reasoningStatus,
@@ -5175,6 +5231,7 @@ async function runComputerUseSession({ event, approval, runControl = null }) {
             sendStatus("Skipping sign-in");
             sendStream("computer_action", { action: stepEntry });
             void updateComputerUseUserActionSteps(approval, computerUseSteps);
+            localUpdateComputerUseTaskState(approval, stepEntry, "running");
             writeAmbientLog("computer_use_background_action_blocked", {
               requestId: approval.requestId,
               approvalId: approval.approvalId,
@@ -5208,6 +5265,7 @@ async function runComputerUseSession({ event, approval, runControl = null }) {
           sendStatus(computerActionStatus(action, { background: Boolean(adapter.background) }));
           sendStream("computer_action", { action: stepEntry });
           void updateComputerUseUserActionSteps(approval, computerUseSteps);
+          localUpdateComputerUseTaskState(approval, stepEntry, criticalRisk ? "waiting_approval" : "running");
           writeAmbientLog("computer_use_step_started", {
             requestId: approval.requestId,
             approvalId: approval.approvalId,
@@ -5257,6 +5315,7 @@ async function runComputerUseSession({ event, approval, runControl = null }) {
                 stepEntry.errorMessage = "User cancelled before the critical action.";
                 sendStream("computer_action", { action: stepEntry });
                 void updateComputerUseUserActionSteps(approval, computerUseSteps);
+                localUpdateComputerUseTaskState(approval, stepEntry, "cancelled");
                 throw computerUseCancelledError();
               }
               if (decision.decision === "not_allow") {
@@ -5264,6 +5323,7 @@ async function runComputerUseSession({ event, approval, runControl = null }) {
                 stepEntry.errorMessage = "User did not allow this critical action.";
                 sendStream("computer_action", { action: stepEntry });
                 void updateComputerUseUserActionSteps(approval, computerUseSteps);
+                localUpdateComputerUseTaskState(approval, stepEntry, "running");
                 if (pendingSafetyChecks.length && !safetyApprovalHandled) {
                   safetyApprovalHandled = true;
                 }
@@ -5305,6 +5365,7 @@ async function runComputerUseSession({ event, approval, runControl = null }) {
               stepEntry.approvedCriticalAction = true;
               sendStream("computer_action", { action: stepEntry });
               void updateComputerUseUserActionSteps(approval, computerUseSteps);
+              localUpdateComputerUseTaskState(approval, stepEntry, "running");
               writeAmbientLog("computer_use_critical_action_approved", {
                 requestId: approval.requestId,
                 approvalId: approval.approvalId,
@@ -5332,6 +5393,7 @@ async function runComputerUseSession({ event, approval, runControl = null }) {
             stepEntry.status = "succeeded";
             sendStream("computer_action", { action: stepEntry });
             void updateComputerUseUserActionSteps(approval, computerUseSteps);
+            localUpdateComputerUseTaskState(approval, stepEntry, "running");
             writeAmbientLog("computer_use_step_succeeded", {
               requestId: approval.requestId,
               approvalId: approval.approvalId,
@@ -5365,6 +5427,7 @@ async function runComputerUseSession({ event, approval, runControl = null }) {
               : actionError?.message || String(actionError);
             sendStream("computer_action", { action: stepEntry });
             void updateComputerUseUserActionSteps(approval, computerUseSteps);
+            localUpdateComputerUseTaskState(approval, stepEntry, actionCancelled ? "cancelled" : "failed");
             writeAmbientLog("computer_use_step_failed", {
               requestId: approval.requestId,
               approvalId: approval.approvalId,
@@ -5651,6 +5714,7 @@ async function runComputerUseSession({ event, approval, runControl = null }) {
     actionQueue.clear();
     setAmbientComputerPassthrough(false);
     hideComputerUseOverlay();
+    setAmbientWindowDefaultLevel("computer_use_finished");
   }
 }
 
@@ -6535,6 +6599,220 @@ function buildComputerUseFollowupRoutingPrompt({ question, recentMessages }) {
     "",
     `Latest user message:\n${truncateText(question, 800)}`
   ].join("\n");
+}
+
+function latestComputerUseTaskStateForThread(threadId = "") {
+  const id = String(threadId || "").trim();
+  if (!id) return null;
+  const store = readLocalStore();
+  const sessions = Array.isArray(store.computerUseSessions) ? store.computerUseSessions : [];
+  const matching = sessions
+    .filter((session) => String(session?.ambientThreadId || session?.threadId || "") === id)
+    .sort((a, b) => Number(b?.updatedAt || b?.createdAt || 0) - Number(a?.updatedAt || a?.createdAt || 0));
+  const session = matching.find((candidate) => String(candidate?.task || candidate?.goal || "").trim()) || null;
+  if (!session) return null;
+  const metadata = session.metadata && typeof session.metadata === "object" ? session.metadata : {};
+  const stepLog = Array.isArray(metadata.stepLog) ? metadata.stepLog : [];
+  const lastStep = session.lastKnownState && typeof session.lastKnownState === "object"
+    ? session.lastKnownState
+    : stepLog.length
+      ? stepLog.at(-1)
+      : null;
+  return {
+    taskId: session._id || session.id || null,
+    status: String(session.status || "unknown"),
+    goal: String(session.goal || session.task || "").trim(),
+    task: String(session.task || session.goal || "").trim(),
+    adapter: session.adapter || metadata.adapter || "",
+    background: Boolean(session.background || metadata.background),
+    finalText: truncateText(session.finalText || "", 600),
+    errorMessage: truncateText(session.errorMessage || "", 600),
+    lastKnownState: {
+      step: Number(lastStep?.step || metadata.steps || 0) || null,
+      label: lastStep?.label || "",
+      status: lastStep?.status || "",
+      app: lastStep?.app || metadata.activeApp || "",
+      windowTitle: lastStep?.windowTitle || metadata.activeWindowTitle || "",
+      url: lastStep?.url || metadata.browserUrl || ""
+    }
+  };
+}
+
+function compactComputerUseTaskStateText(taskState = null) {
+  if (!taskState?.task && !taskState?.goal) return "None";
+  const lines = [
+    `Task id: ${taskState.taskId || "unknown"}`,
+    `Status: ${taskState.status || "unknown"}`,
+    `Goal: ${taskState.goal || taskState.task}`,
+    taskState.adapter ? `Surface: ${taskState.background ? "background_browser" : "live_mac"} (${taskState.adapter})` : "",
+    taskState.finalText ? `Last result: ${taskState.finalText}` : "",
+    taskState.errorMessage ? `Last blocker: ${taskState.errorMessage}` : "",
+    taskState.lastKnownState?.label ? `Last step: ${taskState.lastKnownState.label} (${taskState.lastKnownState.status || "unknown"})` : ""
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
+function buildAmbientTurnPlannerPrompt({ question, recentMessages, taskState }) {
+  const recent = (Array.isArray(recentMessages) ? recentMessages : [])
+    .slice(-14)
+    .map(formatComputerUseRoutingMessage)
+    .filter(Boolean)
+    .join("\n");
+  return [
+    "You are the first-pass tool planner for OpenArgos, a local Mac assistant.",
+    "Do not answer the user. Decide which route should handle the latest user turn.",
+    "",
+    "Routes:",
+    "- chat: answer normally with the selected language model.",
+    "- computer_use: operate a browser, website, app, file, media app, or the Mac UI.",
+    "- memory: save an explicit durable user memory.",
+    "- settings: answer local app status/settings questions.",
+    "- clarify: ask one short clarification because the action target is genuinely missing.",
+    "",
+    "Computer Use rules:",
+    "- If the latest user turn is a follow-up, pronoun, correction, or nudge that continues a recent Computer Use task, choose computer_use before chat.",
+    "- Write task as one standalone imperative goal. Preserve filenames, services, and constraints from the user.",
+    "- For referential follow-ups, resolve against the recent conversation without answering the relationship in chat. Example shape: \"Download a photo of Donald Trump's wife\".",
+    "- Do not route complaints, debugging questions, or product feedback to computer_use unless the user asks OpenArgos to operate the Mac/browser/app.",
+    "- Do not tell the user to enable or approve Computer Use. The app will handle availability and approval.",
+    "- Use surface background_browser for public web lookup/download/navigation that does not require the user's logged-in account or native app.",
+    "- Use surface live_mac for signed-in services, personal accounts, current visible browser state, Finder/files, native apps, media apps, and OpenArgos settings.",
+    "",
+    "Return strict JSON only with this schema:",
+    "{\"route\":\"chat|computer_use|memory|settings|clarify\",\"task\":\"standalone task for computer_use, memory text for memory, or empty\",\"goal\":\"short current goal/status label\",\"surface\":\"background_browser|live_mac|none\",\"continuation_task_id\":\"task id if continuing, else empty\",\"clarification\":\"short question if clarify, else empty\",\"reason\":\"short reason\"}",
+    "",
+    `Recent Computer Use task state:\n${compactComputerUseTaskStateText(taskState)}`,
+    "",
+    `Recent conversation:\n${recent || "None"}`,
+    "",
+    `Latest user turn:\n${truncateText(question, 900)}`
+  ].join("\n");
+}
+
+function normalizeAmbientTurnPlan(parsed = {}, { question = "", taskState = null } = {}) {
+  const rawRoute = String(parsed?.route || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const routeAliases = {
+    computer: "computer_use",
+    computeruse: "computer_use",
+    computer_use_task: "computer_use",
+    setting: "settings",
+    settings_status: "settings",
+    memory_save: "memory",
+    ask_clarification: "clarify"
+  };
+  const route = routeAliases[rawRoute] || rawRoute;
+  const allowedRoutes = new Set(["chat", "computer_use", "memory", "settings", "clarify"]);
+  const normalizedRoute = allowedRoutes.has(route) ? route : "chat";
+  const rawSurface = String(parsed?.surface || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const surface = ["background_browser", "live_mac"].includes(rawSurface)
+    ? rawSurface
+    : "none";
+  let task = String(parsed?.task || "").replace(/\s+/g, " ").trim();
+  const goal = String(parsed?.goal || "").replace(/\s+/g, " ").trim();
+  if (normalizedRoute === "computer_use" && !task) {
+    task = goal || String(question || "").trim();
+  }
+  if (normalizedRoute === "memory" && !task) {
+    task = String(parsed?.memory_text || parsed?.memoryText || "").replace(/\s+/g, " ").trim();
+  }
+  const continuationTaskId = String(parsed?.continuation_task_id || parsed?.continuationTaskId || "").trim();
+  return {
+    route: normalizedRoute,
+    task,
+    goal,
+    surface,
+    continuationTaskId,
+    clarification: String(parsed?.clarification || "").replace(/\s+/g, " ").trim(),
+    reason: String(parsed?.reason || "").replace(/\s+/g, " ").trim(),
+    continued: Boolean(continuationTaskId || (normalizedRoute === "computer_use" && taskState?.taskId && /follow|continu|refer|previous|recent|pronoun|nudge/i.test(String(parsed?.reason || ""))))
+  };
+}
+
+function fallbackAmbientTurnPlan(question, recentMessages = [], taskState = null) {
+  const memorySaveIntent = detectAmbientMemorySaveIntent(question);
+  if (memorySaveIntent) {
+    return {
+      route: "memory",
+      task: memorySaveIntent.text || "",
+      goal: "Save memory",
+      surface: "none",
+      continuationTaskId: "",
+      clarification: "",
+      reason: "local fallback memory intent"
+    };
+  }
+  if (detectComputerUseStatusQuery(question)) {
+    return {
+      route: "settings",
+      task: "",
+      goal: "Check Computer Use status",
+      surface: "none",
+      continuationTaskId: "",
+      clarification: "",
+      reason: "local fallback settings status"
+    };
+  }
+  if (detectComputerUseIntent(question, { recentMessages })) {
+    const task = resolveComputerUseTask(question, recentMessages);
+    return {
+      route: "computer_use",
+      task,
+      goal: task,
+      surface: "none",
+      continuationTaskId: taskState?.taskId || "",
+      clarification: "",
+      reason: "local fallback computer use intent"
+    };
+  }
+  return {
+    route: "chat",
+    task: "",
+    goal: "",
+    surface: "none",
+    continuationTaskId: "",
+    clarification: "",
+    reason: "local fallback chat"
+  };
+}
+
+async function planAmbientTurnWithModel({ question, recentMessages, taskState, policy, credential, requestId }) {
+  const fallback = () => fallbackAmbientTurnPlan(question, recentMessages, taskState);
+  if (!credential?.apiKey) return fallback();
+  try {
+    const result = await callAmbientModel({
+      policy,
+      credential,
+      prompt: buildAmbientTurnPlannerPrompt({ question, recentMessages, taskState }),
+      screenshotDataUrl: null,
+      intent: { useWebSearch: false },
+      system: "You are a strict JSON tool planner. Return only valid JSON for the requested schema."
+    });
+    const parsed = extractJsonObject(result?.text || "");
+    if (!parsed) throw new Error("Planner returned no JSON.");
+    const plan = normalizeAmbientTurnPlan(parsed, { question, taskState });
+    if (plan.route === "computer_use" && rejectsComputerUseIntent(plan.task || question)) {
+      return { ...plan, route: "chat", task: "", surface: "none", reason: "user rejected computer use" };
+    }
+    writeAmbientLog("ambient_turn_planned", {
+      requestId,
+      route: plan.route,
+      surface: plan.surface,
+      continued: plan.continued,
+      continuationTaskId: plan.continuationTaskId || null,
+      taskPreview: truncateText(plan.task || "", 260),
+      reason: truncateText(plan.reason || "", 260)
+    });
+    return plan;
+  } catch (error) {
+    const plan = fallback();
+    writeAmbientLog("ambient_turn_planner_failed", {
+      requestId,
+      fallbackRoute: plan.route,
+      fallbackTaskPreview: truncateText(plan.task || "", 260),
+      ...diagnosticErrorDetails(error)
+    });
+    return plan;
+  }
 }
 
 async function resolveComputerUseFollowupWithModel({ question, recentMessages, policy, credential, requestId }) {
@@ -7590,6 +7868,7 @@ function createWindow(page) {
     show: false,
     title: "",
     icon: appIconPath,
+    skipTaskbar: false,
     backgroundColor: "#00000000",
     transparent: true,
     titleBarStyle: "hiddenInset",
@@ -7795,6 +8074,31 @@ function resolveComputerUseAdapterPlan(task = "", context = {}) {
   };
 }
 
+function resolveComputerUseAdapterPlanForTurn(task = "", context = {}, turnPlan = {}) {
+  if (turnPlan?.surface === "background_browser") {
+    return {
+      kind: "browser",
+      label: "Background browser",
+      background: true,
+      reason: turnPlan.reason || "planner selected public background browser",
+      initialUrl: initialBackgroundBrowserUrlForTask(task)
+    };
+  }
+  if (turnPlan?.surface === "live_mac") {
+    return {
+      kind: "native",
+      label: "Live Mac",
+      background: false,
+      reason: turnPlan.reason || "planner selected live Mac control",
+      activeApp: context?.activeApp || "",
+      activeWindowTitle: context?.activeWindowTitle || "",
+      browserTitle: context?.browserTitle || "",
+      browserUrl: context?.browserUrl || ""
+    };
+  }
+  return resolveComputerUseAdapterPlan(task, context);
+}
+
 function waitForWindowLoaded(win, timeoutMs = 1400) {
   if (!win || win.isDestroyed() || !win.webContents?.isLoading()) return Promise.resolve();
   return new Promise((resolve) => {
@@ -7918,6 +8222,33 @@ function showAmbientWindow(win, { activate = false } = {}) {
   win.moveTop();
 }
 
+function setAmbientWindowDefaultLevel(reason = "unknown") {
+  if (!ambientWindow || ambientWindow.isDestroyed()) return;
+  try {
+    ambientWindow.setAlwaysOnTop(true, "floating");
+  } catch (error) {
+    writeAmbientLog("ambient_window_level_reset_failed", {
+      reason,
+      ...diagnosticErrorDetails(error)
+    });
+  }
+}
+
+function presentAmbientWindowForComputerUseApproval() {
+  if (!ambientWindow || ambientWindow.isDestroyed()) return;
+  try {
+    ambientWindow.setAlwaysOnTop(true, "screen-saver");
+  } catch {
+    ambientWindow.setAlwaysOnTop(true);
+  }
+  showAmbientWindow(ambientWindow, { activate: true });
+  setTimeout(() => {
+    if (ambientWindow && !ambientWindow.isDestroyed()) {
+      ambientWindow.moveTop();
+    }
+  }, 80);
+}
+
 function updateTrayLaunchState() {
   const canStartChat = hasLlmProviderCredential();
   const chatItem = trayMenu?.getMenuItemById?.("new-chat");
@@ -7963,10 +8294,25 @@ function ensureDockPresence(reason = "unknown") {
     });
   }
   try {
-    app.dock?.setIcon(dockIconPath);
+    if (dockIconPath) {
+      let dockIcon = nativeImage.createFromPath(dockIconPath);
+      if (dockIcon.isEmpty()) {
+        try {
+          dockIcon = nativeImage.createFromBuffer(fs.readFileSync(dockIconPath));
+        } catch {
+          // The log below records the final empty image state.
+        }
+      }
+      if (!dockIcon.isEmpty()) {
+        app.dock?.setIcon(dockIcon);
+      } else {
+        writeAmbientLog("dock_icon_empty", { reason, path: dockIconPath });
+      }
+    }
   } catch (error) {
     writeAmbientLog("dock_icon_set_failed", {
       reason,
+      path: dockIconPath,
       ...diagnosticErrorDetails(error)
     });
   }
@@ -8065,6 +8411,10 @@ function requestStopActiveComputerUse({ approvalId = "", source = "unknown" } = 
 
 function handleComputerUseStopShortcut() {
   const result = requestStopActiveComputerUse({ source: "shortcut" });
+  notifyAmbientComputerUseStop(result);
+}
+
+function notifyAmbientComputerUseStop(result = {}) {
   if (result.stopped && ambientWindow && !ambientWindow.isDestroyed()) {
     ambientWindow.webContents.send("ambient:computer-stop-shortcut", result);
   }
@@ -9315,37 +9665,42 @@ async function handleLocalAmbientAsk(event, payload, { question, requestId, stre
       sendStream("error", { message: missingKey.message });
       return missingKey;
     }
-    sendStatus("Thinking");
+    sendStatus("Planning");
     thread = localEnsureAmbientThread(String(payload.threadId || "").trim() || null, { title: "Chat" });
     const previousMessages = localListAmbientMessages(thread._id, 24);
     const normalizedPreviousMessages = previousMessages.map(normalizeAmbientMessageDoc).filter(Boolean).reverse();
     policy = await getLocalRuntimeModelPolicy();
     credential = resolveCredentialForPolicy(policy);
-    const memorySaveIntent = detectAmbientMemorySaveIntent(question);
-    const computerUseStatusQuery = !memorySaveIntent && detectComputerUseStatusQuery(question);
-    let computerUseIntent = memorySaveIntent
-      ? false
-      : computerUseStatusQuery
-        ? false
-        : detectComputerUseIntent(question, { recentMessages: normalizedPreviousMessages });
-    let computerUseTask = computerUseIntent
-      ? resolveComputerUseTask(question, normalizedPreviousMessages)
-      : "";
-    if (!computerUseIntent && !memorySaveIntent && !computerUseStatusQuery) {
-      const resolvedFollowup = await resolveComputerUseFollowupWithModel({
-        question,
-        recentMessages: normalizedPreviousMessages,
-        policy,
-        credential,
-        requestId
-      });
-      if (resolvedFollowup?.task) {
-        computerUseIntent = true;
-        computerUseTask = resolvedFollowup.task;
-      }
+    const latestComputerUseTaskState = latestComputerUseTaskStateForThread(thread._id);
+    const turnPlan = await planAmbientTurnWithModel({
+      question,
+      recentMessages: normalizedPreviousMessages,
+      taskState: latestComputerUseTaskState,
+      policy,
+      credential,
+      requestId
+    });
+    sendStatus("Thinking");
+    let memorySaveIntent = null;
+    if (turnPlan.route === "memory") {
+      const detectedMemoryIntent = detectAmbientMemorySaveIntent(question);
+      const plannedMemoryText = userVisibleMemoryText(turnPlan.task || "");
+      memorySaveIntent = detectedMemoryIntent || {
+        text: plannedMemoryText,
+        blocked: !plannedMemoryText,
+        reason: plannedMemoryText ? "" : "empty"
+      };
     }
+    const computerUseStatusQuery = !memorySaveIntent && (
+      detectComputerUseStatusQuery(question) ||
+      (turnPlan.route === "settings" && /\b(?:computer\s+use|computer-use|cua)\b/i.test(`${question} ${turnPlan.task} ${turnPlan.goal}`))
+    );
+    const computerUseIntent = !memorySaveIntent && !computerUseStatusQuery && turnPlan.route === "computer_use";
+    const computerUseTask = computerUseIntent
+      ? (turnPlan.task || turnPlan.goal || question)
+      : "";
     const preContextComputerUseAdapterPlan = computerUseIntent
-      ? resolveComputerUseAdapterPlan(computerUseTask || question, {})
+      ? resolveComputerUseAdapterPlanForTurn(computerUseTask || question, {}, turnPlan)
       : null;
     const intent = ambientContextPolicy({ question, memorySaveIntent, computerUseIntent });
     if (preContextComputerUseAdapterPlan?.kind === "browser") {
@@ -9378,7 +9733,17 @@ async function handleLocalAmbientAsk(event, payload, { question, requestId, stre
       role: "user",
       text: question,
       contextSnapshotId: contextSnapshot?._id,
-      metadata: { requestId }
+      metadata: {
+        requestId,
+        turnPlan: {
+          route: turnPlan.route,
+          surface: turnPlan.surface,
+          task: turnPlan.task || "",
+          goal: turnPlan.goal || "",
+          continuationTaskId: turnPlan.continuationTaskId || "",
+          reason: turnPlan.reason || ""
+        }
+      }
     });
 
     const computerUsePolicy = computerUseIntent ? getComputerUseRuntimePolicy() : null;
@@ -9386,9 +9751,43 @@ async function handleLocalAmbientAsk(event, payload, { question, requestId, stre
     const computerUseAdapterPlan = computerUseIntent
       ? preContextComputerUseAdapterPlan?.kind === "browser"
         ? preContextComputerUseAdapterPlan
-        : resolveComputerUseAdapterPlan(computerUseTask || question, context)
+        : resolveComputerUseAdapterPlanForTurn(computerUseTask || question, context, turnPlan)
       : null;
     const webSearchEnabled = Boolean(intent.useWebSearch && providerSupportsWebSearch(policy.provider));
+    if (turnPlan.route === "clarify") {
+      const answerText = turnPlan.clarification || "What should I do next?";
+      sendStream("route", {
+        mode: "clarify",
+        screenshot: false,
+        webSearch: false,
+        provider: policy.provider,
+        model: policy.runtimeModel
+      });
+      sendStream("delta", { text: answerText });
+      const assistantMessage = localAddAmbientMessage({
+        threadId: thread._id,
+        role: "assistant",
+        text: answerText,
+        status: "completed",
+        provider: policy.provider,
+        model: policy.runtimeModel,
+        credentialSource: credential.credentialSource,
+        contextSnapshotId: contextSnapshot?._id,
+        metadata: {
+          requestId,
+          actionType: "clarification"
+        }
+      });
+      notifyMainWindow("ambient:history-changed", { threadId: thread._id });
+      return {
+        ok: true,
+        threadId: thread._id,
+        requestId,
+        question: normalizeAmbientMessageDoc(userMessage),
+        answer: normalizeAmbientMessageDoc(assistantMessage),
+        context: { mode: "clarify" }
+      };
+    }
     if (computerUseStatusQuery) {
       const statusPolicy = getComputerUseRuntimePolicy();
       const answerText = computerUseStatusAnswer(statusPolicy);
@@ -9430,6 +9829,10 @@ async function handleLocalAmbientAsk(event, payload, { question, requestId, stre
     writeAmbientLog("context_ready", {
       requestId,
       threadId: thread._id,
+      plannerRoute: turnPlan.route,
+      plannerSurface: turnPlan.surface,
+      plannerContinued: Boolean(turnPlan.continued),
+      plannerTaskPreview: truncateText(turnPlan.task || "", 180),
       mode: intent.mode,
       useWebSearch: webSearchEnabled,
       screenAwarenessEnabled,
@@ -9455,7 +9858,8 @@ async function handleLocalAmbientAsk(event, payload, { question, requestId, stre
       provider: computerUseIntent ? (computerUsePolicy?.provider || "") : policy.provider,
       model: computerUseIntent ? (computerUsePolicy?.runtimeModel || "") : policy.runtimeModel,
       adapter: computerUseAdapterPlan?.kind || null,
-      background: Boolean(computerUseAdapterPlan?.background)
+      background: Boolean(computerUseAdapterPlan?.background),
+      goal: computerUseIntent ? (turnPlan.goal || computerUseTask) : ""
     });
 
     if (screenAwarenessBlocked) {
@@ -9626,6 +10030,9 @@ async function handleLocalAmbientAsk(event, payload, { question, requestId, stre
         ambientThreadId: thread._id,
         requestId,
         task: computerUseTask || question,
+        goal: turnPlan.goal || computerUseTask || question,
+        continuationOfSessionId: turnPlan.continuationTaskId || (turnPlan.continued ? latestComputerUseTaskState?.taskId : "") || "",
+        continuationState: turnPlan.continued ? latestComputerUseTaskState : null,
         status: "pending_approval",
         provider: computerUsePolicy?.provider || "",
         model: computerUsePolicy?.runtimeModel || "",
@@ -9637,6 +10044,9 @@ async function handleLocalAmbientAsk(event, payload, { question, requestId, stre
           sourceQuestion: question,
           adapterReason: computerUseAdapterPlan.reason,
           initialUrl: computerUseAdapterPlan.initialUrl || null,
+          plannerRoute: turnPlan.route,
+          plannerSurface: turnPlan.surface,
+          plannerReason: turnPlan.reason,
           activeApp: context.activeApp || null,
           activeWindowTitle: context.activeWindowTitle || null,
           browserTitle: context.browserTitle || null,
@@ -9650,6 +10060,9 @@ async function handleLocalAmbientAsk(event, payload, { question, requestId, stre
         threadId: thread._id,
         contextSnapshotId: contextSnapshot?._id,
         task: computerUseTask || question,
+        goal: turnPlan.goal || computerUseTask || question,
+        taskState: latestComputerUseTaskState,
+        continuationTaskId: turnPlan.continuationTaskId || (turnPlan.continued ? latestComputerUseTaskState?.taskId : "") || "",
         sourceQuestion: question,
         requestId,
         streamRequestId,
@@ -9742,6 +10155,7 @@ async function handleLocalAmbientAsk(event, payload, { question, requestId, stre
         approvalId,
         sessionId: computerSession?._id,
         task: computerUseTask || question,
+        goal: turnPlan.goal || computerUseTask || question,
         adapter: computerUseAdapterPlan.kind,
         background: Boolean(computerUseAdapterPlan.background)
       });
@@ -10121,9 +10535,11 @@ ipcMain.handle("ambient:computer-critical-decision", async (_event, payload = {}
   return { ok: true };
 });
 
-ipcMain.handle("computer-overlay:stop", async () => (
-  requestStopActiveComputerUse({ source: "overlay" })
-));
+ipcMain.handle("computer-overlay:stop", async () => {
+  const result = requestStopActiveComputerUse({ source: "overlay" });
+  notifyAmbientComputerUseStop(result);
+  return result;
+});
 
 ipcMain.handle("ambient:history:list", async (_event, payload = {}) => {
   const limit = Math.min(Math.max(Number(payload.limit || 80), 1), 200);
