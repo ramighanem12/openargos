@@ -2,8 +2,8 @@
   "name": "openargos",
   "version": "0.1.0",
   "private": false,
-  "description": "Local-first ambient desktop assistant",
-  "license": "MIT",
+  "description": "A local-first Mac assistant for chat, screen-aware answers, voice input, memories, and approved Computer Use with your own AI keys.",
+  "license": "LicenseRef-OpenArgos-Non-Commercial",
   "author": "OpenArgos contributors",
   "homepage": "https://github.com/ramighanem12/openargos",
   "repository": {

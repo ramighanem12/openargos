@@ -5,7 +5,7 @@ It gives you a small desktop chat window, screen-aware answers, optional voice i
 
 No hosted OpenArgos account is required. Your chats, memories, preferences, and saved provider keys stay on your Mac by default.
 
-## What Works Today
+## Features
 
 - Chat with your own model key
 - Screen-aware answers when you grant Screen Recording permission
@@ -26,8 +26,8 @@ Supported model providers:
 
 Supported voice transcription providers:
 
-- OpenAI, using your saved OpenAI key
-- Groq, using your saved Groq key
+- OpenAI
+- Groq
 
 ## Requirements
 
@@ -75,10 +75,10 @@ OpenArgos will launch as a normal Mac app and also create a menu bar item.
 
 You only need the permissions for the features you turn on:
 
-- Screen Recording: lets OpenArgos answer questions about your visible screen and run approved Computer Use.
+- Screen Recording: lets OpenArgos see your visible screen for screen-aware answers and approved Computer Use.
 - Accessibility: lets OpenArgos perform approved clicks, typing, and keyboard actions.
 - Microphone: enables voice input.
-- Automation: lets OpenArgos read active app, window, and browser-tab metadata.
+- Automation: lets OpenArgos use macOS Apple Events to read active app, window, and browser-tab context when a screen-aware answer or Computer Use task needs it. It is separate from Screen Recording, which is the visual screen permission.
 
 If macOS permissions get stuck during local development, remove OpenArgos from the relevant System Settings privacy section and relaunch the app.
 
@@ -90,9 +90,10 @@ Examples:
 
 ```text
 Summarize what is on my screen.
-Remember that I prefer concise answers.
+Compare the open proposal against the notes in this browser tab.
+Draft a short reply to the email I have open, but ask before sending.
+Find the latest invoice in Downloads and summarize the total.
 Download a photo of Grace Hopper and name the file grace-hopper.
-Open Wikipedia and find the page for the Great Wall of China.
 ```
 
 Computer Use always runs through the app's approval flow. For risky actions like sending messages, deleting files, posting publicly, purchasing, checkout, billing, or security changes, OpenArgos asks again before continuing.
@@ -107,7 +108,7 @@ OpenArgos stores local app data in your macOS app data directory. That includes:
 - encrypted provider keys
 - local diagnostic logs
 
-Model requests go directly from your Mac to the provider whose key you configured. The default app does not require a hosted account, remote database, billing plan, organization, or team membership.
+Model requests go directly from your Mac to the provider whose key you configured.
 
 ## Build a Local Mac App
 
@@ -128,9 +129,13 @@ The local build creates or reuses a self-signed `OpenArgos Local Development` co
 
 If that local identity cannot be created, the build falls back to ad-hoc signing. Ad-hoc builds may need to be opened from Finder with right-click > Open, and macOS may ask for permissions again after rebuilds.
 
-## Build a Public Signed Release
+## Build a Notarized Release DMG
 
-For a GitHub Release that opens cleanly for other users, you need an Apple Developer account, a `Developer ID Application` certificate, and Apple notarization credentials.
+This section is for maintainers publishing a downloadable DMG on GitHub Releases.
+
+For local development, `npm run dist:mac` is enough. For a public DMG, macOS expects the app to be signed with an Apple `Developer ID Application` certificate and notarized by Apple. That is what lets users download the app, open it normally, and keep macOS permissions more stable across installs.
+
+To make that kind of release, you need an Apple Developer account, a `Developer ID Application` certificate, and Apple notarization credentials.
 
 Set the signing identity, then run:
 
@@ -197,4 +202,6 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) and [SECURITY.md](./SECURITY.md) for mo
 
 ## License
 
-MIT. See [LICENSE.md](./LICENSE.md).
+OpenArgos is available under the OpenArgos Non-Commercial License. Personal, educational, research, evaluation, and internal non-commercial use are allowed. Commercial use, resale, paid redistribution, and hosted paid access are not allowed without written permission.
+
+See [LICENSE.md](./LICENSE.md).
