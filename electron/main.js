@@ -6775,9 +6775,53 @@ function fallbackAmbientTurnPlan(question, recentMessages = [], taskState = null
   };
 }
 
+function looksLikeComputerUseContinuationPhrase(question = "", taskState = null) {
+  if (!taskState?.task && !taskState?.goal) return false;
+  const normalized = normalizeComputerIntentText(question);
+  if (!normalized || normalized.length > 180 || rejectsComputerUseIntent(normalized)) return false;
+  if (/^(?:hi|hello|hey|thanks|thank you|cool|nice|ok|okay)\b/.test(normalized)) return false;
+  const asksAboutBehavior = /^(?:why|how|what|where|when)\b/.test(normalized) &&
+    /\b(?:you|it|that|this|app|openargos|argos|computer\s+use|browser|screen|model|route|planning)\b/.test(normalized);
+  if (asksAboutBehavior && !textLooksLikeComputerUseTask(normalized)) return false;
+  if (textLooksLikeComputerUseFollowup(normalized)) return true;
+  if (/\b(?:it|that|this|same|another|again|redo|retry|now|next|his|her|their|wife|husband|partner|ceo|founder|song|track|one)\b/.test(normalized)) {
+    return true;
+  }
+  const wordCount = normalized.split(/\s+/).filter(Boolean).length;
+  const startsAsQuestion = /^(?:why|how|what|where|when|who|is|are|do|does|did|can|could|should|would|will)\b/.test(normalized);
+  return wordCount > 0 && wordCount <= 10 && !startsAsQuestion;
+}
+
+function shouldUseModelAmbientPlanner(question, recentMessages = [], taskState = null, localPlan = null) {
+  if (!question || rejectsComputerUseIntent(question)) return false;
+  if (localPlan?.route === "memory" || localPlan?.route === "settings") return false;
+  if (!taskState?.taskId && !hasRecentComputerUseContext(recentMessages)) return false;
+  if (localPlan?.route === "chat") {
+    return looksLikeComputerUseContinuationPhrase(question, taskState);
+  }
+  if (localPlan?.route === "computer_use") {
+    const directTask = textLooksLikeComputerUseTask(question) || extractPublicImageDownloadSubject(question);
+    return !directTask && looksLikeComputerUseContinuationPhrase(question, taskState);
+  }
+  return false;
+}
+
 async function planAmbientTurnWithModel({ question, recentMessages, taskState, policy, credential, requestId }) {
-  const fallback = () => fallbackAmbientTurnPlan(question, recentMessages, taskState);
-  if (!credential?.apiKey) return fallback();
+  const localPlan = fallbackAmbientTurnPlan(question, recentMessages, taskState);
+  const useModelPlanner = shouldUseModelAmbientPlanner(question, recentMessages, taskState, localPlan);
+  if (!credential?.apiKey || !useModelPlanner) {
+    writeAmbientLog("ambient_turn_planned", {
+      requestId,
+      route: localPlan.route,
+      surface: localPlan.surface,
+      continued: Boolean(localPlan.continued),
+      continuationTaskId: localPlan.continuationTaskId || null,
+      taskPreview: truncateText(localPlan.task || "", 260),
+      reason: truncateText(localPlan.reason || "local planner", 260),
+      planner: "local"
+    });
+    return localPlan;
+  }
   try {
     const result = await callAmbientModel({
       policy,
@@ -6800,11 +6844,12 @@ async function planAmbientTurnWithModel({ question, recentMessages, taskState, p
       continued: plan.continued,
       continuationTaskId: plan.continuationTaskId || null,
       taskPreview: truncateText(plan.task || "", 260),
-      reason: truncateText(plan.reason || "", 260)
+      reason: truncateText(plan.reason || "", 260),
+      planner: "model"
     });
     return plan;
   } catch (error) {
-    const plan = fallback();
+    const plan = localPlan;
     writeAmbientLog("ambient_turn_planner_failed", {
       requestId,
       fallbackRoute: plan.route,
@@ -9665,7 +9710,7 @@ async function handleLocalAmbientAsk(event, payload, { question, requestId, stre
       sendStream("error", { message: missingKey.message });
       return missingKey;
     }
-    sendStatus("Planning");
+    sendStatus("Thinking");
     thread = localEnsureAmbientThread(String(payload.threadId || "").trim() || null, { title: "Chat" });
     const previousMessages = localListAmbientMessages(thread._id, 24);
     const normalizedPreviousMessages = previousMessages.map(normalizeAmbientMessageDoc).filter(Boolean).reverse();
@@ -9680,7 +9725,6 @@ async function handleLocalAmbientAsk(event, payload, { question, requestId, stre
       credential,
       requestId
     });
-    sendStatus("Thinking");
     let memorySaveIntent = null;
     if (turnPlan.route === "memory") {
       const detectedMemoryIntent = detectAmbientMemorySaveIntent(question);
