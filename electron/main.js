@@ -986,20 +986,6 @@ function singularImageAssetWord(value = "") {
   return ["photo", "image", "picture", "logo", "icon"].includes(word) ? word : "image";
 }
 
-function textLooksLikeBareImageSubjectFollowup(value = "") {
-  const text = String(value || "").trim();
-  if (!text || text.length > 90 || /[?]/.test(text) || /^https?:\/\//i.test(text)) return false;
-  const words = text.split(/\s+/).filter(Boolean);
-  if (words.length > 10) return false;
-  if (
-    /^(?:thanks|thank you|ok|okay|cool|great|nice|done|yes|no|why|what|where|when|how|can|could|would|will|do|does|did|is|are|was|were|use|open|find|check|read|tell|show|search|look|go|navigate|click|type|order|reorder|buy|purchase|play|download|save|get|grab|turn|configure|set|change|the image|the photo|the file)\b/i.test(text)
-  ) {
-    return false;
-  }
-  if (/\b(?:computer|browser|screen|window|app|settings|order|checkout|cart|account|login|sign\s+in)\b/i.test(text)) return false;
-  return /[A-Z][a-z]/.test(text) || /\b[A-Z]{2,}\b/.test(text);
-}
-
 function resolveImageDownloadFollowupTask(question, recentMessages = []) {
   if (!Array.isArray(recentMessages)) return "";
   const previousSubject = latestImageDownloadSubjectFromMessages(recentMessages);
@@ -1022,15 +1008,6 @@ function resolveImageDownloadFollowupTask(question, recentMessages = []) {
     const asset = singularImageAssetWord(trailingAsset[2]);
     const subject = cleanComputerUseEntityText(trailingAsset[1]);
     return subject ? `Download a ${asset} of ${subject}` : "";
-  }
-
-  if (
-    textLooksLikeBareImageSubjectFollowup(stripped)
-  ) {
-    const subject = cleanComputerUseEntityText(stripped);
-    if (subject && /[A-Za-z]{2,}/.test(subject)) {
-      return `Download a photo of ${subject}`;
-    }
   }
 
   return "";
@@ -4468,7 +4445,7 @@ function criticalActionCategory(text = "", action = {}) {
     (keys.includes("RETURN") || keys.includes("ENTER")) &&
     (keys.includes("COMMAND") || keys.includes("CONTROL"));
 
-  if (commandDelete || /\b(permanently\s+delete|delete|remove|move\s+to\s+trash|trash|empty\s+trash|erase|destroy|wipe)\b/.test(source)) {
+  if (commandDelete || /\b(permanently\s+delete|delete|move\s+to\s+trash|trash|empty\s+trash|erase|destroy|wipe)\b/.test(source)) {
     return {
       category: "delete",
       title: "Approve deleting?",

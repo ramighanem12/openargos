@@ -686,7 +686,8 @@ body.is-compact-mode .ambient-window-actions {
 }
 
 .ambient-card.is-height-capped .ambient-body,
-.ambient-card.is-computer-approval .ambient-body {
+.ambient-card.is-computer-approval .ambient-body,
+.ambient-card.is-computer-risk-approval .ambient-body {
   flex-basis: 0;
 }
 

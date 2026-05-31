@@ -3148,6 +3148,7 @@ function rememberCompletedComputerUseApproval(approvalId) {
 }
 
 function clearActiveComputerUseActionItem({ settleRunningAs = "succeeded" } = {}) {
+  if (pendingComputerUseCriticalApproval) hideComputerUseCriticalApproval();
   const items = new Set([
     activeComputerUseActionItem,
     ...log.querySelectorAll(".ambient-user-action.is-computer-use-active, .ambient-user-action.is-waiting-next-step, .ambient-user-action.is-stopping")
@@ -3200,6 +3201,18 @@ function restoreComputerUseStopFailed(item) {
 async function requestComputerUseStop(item = findComputerUseActionItem()) {
   const approvalId = item?.dataset.approvalId || activeComputerUseApprovalId;
   if (!approvalId || item?.classList.contains("is-stopping")) return;
+  if (
+    pendingComputerUseCriticalApproval &&
+    String(pendingComputerUseCriticalApproval.approvalId || "") === String(approvalId || "")
+  ) {
+    const approval = pendingComputerUseCriticalApproval;
+    hideComputerUseCriticalApproval();
+    void window.ambient?.decideComputerCriticalAction?.({
+      decisionId: approval.decisionId,
+      approvalId: approval.approvalId,
+      decision: "cancel"
+    });
+  }
   markComputerUseStopping(item);
   const result = await window.ambient?.stopComputerUse?.({ approvalId });
   if (!result?.stopped) {
@@ -3932,6 +3945,7 @@ async function runApprovedComputerUse(approval, { alwaysAllow = false } = {}) {
       runError.code = result?.code;
       throw runError;
     }
+    hideComputerUseCriticalApproval();
     ambientThreadId = result.threadId || ambientThreadId;
     status.textContent = "✓ Done";
     status.classList.remove("shimmer");
@@ -3944,6 +3958,7 @@ async function runApprovedComputerUse(approval, { alwaysAllow = false } = {}) {
     }, { message: result.answer });
   } catch (error) {
     setThinking(false);
+    hideComputerUseCriticalApproval();
     const stopped = error?.code === "computer_use_cancelled" || /stopped|cancelled|canceled/i.test(error?.message || "");
     clearActiveComputerUseActionItem({ settleRunningAs: stopped ? "cancelled" : "failed" });
     status.textContent = stopped ? "Stopped" : "Issue";
