@@ -62,13 +62,21 @@ Install dependencies:
 npm install
 ```
 
-Start the app:
+Build and start the branded local app:
 
 ```sh
 npm start
 ```
 
-OpenArgos will launch as a normal Mac app and also create a menu bar item.
+OpenArgos will launch as a normal Mac app and also create a menu bar item. This is the right path for testing macOS permissions, because macOS grants permissions to `OpenArgos.app`.
+
+For quick renderer/main-process development, you can run:
+
+```sh
+npm run dev
+```
+
+The dev command runs Electron directly, so macOS may show it as `Electron` and its permissions are separate from the packaged OpenArgos app.
 
 ## First Setup
 
@@ -131,10 +139,12 @@ macOS should show permissions for `Cua Driver`, not OpenArgos and not Terminal. 
 
 Then restart OpenArgos. In Settings > General, keep Computer Use engine set to Cua. The API key is not a replacement for the local driver; `cua-driver` must be installed on the Mac for Cua-powered local app control to run. If your Cua Computer Use setup requires a Cua API key, paste it under Settings > Models > Provider keys; OpenArgos stores it locally and passes it to Cua as `CUA_API_KEY`.
 
-The Native fallback option is not a model. It is OpenArgos' native Computer Use harness, and it still uses your configured Computer Use model for reasoning. Use it when Cua Driver is not installed or when debugging:
+The Native fallback option is not a model. It is OpenArgos' native Computer Use harness, and it still uses your configured Computer Use model for reasoning. Use Settings > General > Computer Use engine to switch to it when Cua Driver is not installed or when debugging.
+
+For development-only raw Electron runs, you can also disable the Cua driver adapter with:
 
 ```sh
-OPENARGOS_COMPUTER_USE_CUA_DRIVER=0 npm start
+OPENARGOS_COMPUTER_USE_CUA_DRIVER=0 npm run dev
 ```
 
 ## Local Data

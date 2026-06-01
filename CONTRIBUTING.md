@@ -6,10 +6,10 @@ OpenArgos is a local-first macOS Electron app. Contributions should preserve tha
 
 ```sh
 npm install
-npm start
+npm run dev
 ```
 
-Build the app with:
+`npm run dev` launches the raw Electron development binary, so macOS may show it as `Electron` and permissions are separate from the packaged app. Build and test the branded app with:
 
 ```sh
 npm run dist:mac

@@ -18,7 +18,9 @@
     "node": ">=20"
   },
   "scripts": {
-    "start": "electron .",
+    "start": "bash scripts/start-local-app.sh",
+    "dev": "electron .",
+    "start:dev": "electron .",
     "build:native": "npm install --prefix native/macos-permissions",
     "eval:computer-use": "node scripts/run-computer-use-evals.js",
     "diagnostics:computer-use": "node scripts/export-computer-use-diagnostics.js",
