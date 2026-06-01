@@ -896,6 +896,7 @@ const computerUseControl = document.querySelector("[data-computer-use-control]")
 const computerUseSwitch = document.querySelector("[data-computer-use-switch]");
 const computerUseTooltip = document.querySelector("[data-computer-use-tooltip]");
 const computerUseToggle = document.querySelector("[data-computer-use-toggle]");
+const computerUseEngineRow = document.querySelector("[data-computer-use-engine-row]");
 const computerUseEngineTrigger = document.querySelector("[data-computer-use-engine-trigger]");
 const computerUseEngineMenu = document.querySelector("[data-computer-use-engine-menu]");
 const computerUseEngineLabel = document.querySelector("[data-computer-use-engine-label]");
@@ -1578,6 +1579,13 @@ function renderComputerUseAvailability() {
     setScopedStorageItem(computerUseKey, "false");
     window.openArgos?.upsertUserSettings?.({ computerUseEnabled: false });
   }
+  renderComputerUseEngineVisibility();
+}
+
+function renderComputerUseEngineVisibility() {
+  const shouldShow = Boolean(computerUseToggle?.checked && !computerUseToggle.disabled);
+  if (computerUseEngineRow) computerUseEngineRow.hidden = !shouldShow;
+  if (!shouldShow) closeComputerUseEngineMenu();
 }
 
 function normalizeComputerUseBackend(value) {
@@ -2262,7 +2270,7 @@ function syncUserScopedState() {
   updateAmbientSoundTypeVisibility();
   renderAmbientSoundType(getScopedStorageItem(ambientSoundTypeKey));
   if (muteMusicWhileDictatingToggle) {
-    muteMusicWhileDictatingToggle.checked = getScopedStorageItem(muteMusicWhileDictatingKey) === "true";
+    muteMusicWhileDictatingToggle.checked = getScopedStorageItem(muteMusicWhileDictatingKey) !== "false";
   }
   if (computerUseToggle) {
     computerUseToggle.checked = getScopedStorageItem(computerUseKey) === "true";
@@ -3519,6 +3527,7 @@ computerUseToggle?.addEventListener("change", () => {
     return;
   }
   setScopedStorageItem(computerUseKey, String(computerUseToggle.checked));
+  renderComputerUseEngineVisibility();
   window.openArgos?.upsertUserSettings?.({
     computerUseEnabled: computerUseToggle.checked
   });

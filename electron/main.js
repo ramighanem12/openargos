@@ -20,6 +20,8 @@ let ambientWindow;
 let computerUseBrowserWindow;
 let computerUseOverlayWindow;
 let computerUseScrimWindow;
+let permissionHelperWindow;
+let permissionHelperState = null;
 let computerUseOverlayState = null;
 let ambientResizeAnimation;
 let suppressNextActivate = false;
@@ -602,7 +604,7 @@ function setAmbientSoundType(type) {
 }
 
 function isMuteMusicWhileDictatingEnabled() {
-  return readStoredSettings().muteMusicWhileDictating === true;
+  return readStoredSettings().muteMusicWhileDictating !== false;
 }
 
 function setMuteMusicWhileDictating(enabled) {
@@ -9311,6 +9313,143 @@ function openPrivacyPane(anchor) {
   shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${anchor}`);
 }
 
+function findNearestAppBundle(startPath) {
+  let current = String(startPath || "");
+  for (let i = 0; current && i < 10; i += 1) {
+    if (/\.app$/i.test(current)) {
+      try {
+        if (fs.statSync(current).isDirectory()) return current;
+      } catch {
+        return current;
+      }
+    }
+    const parent = path.dirname(current);
+    if (!parent || parent === current) break;
+    current = parent;
+  }
+  return "";
+}
+
+function getCurrentAppBundlePath() {
+  const currentBundle = findNearestAppBundle(app.getPath("exe"));
+  if (currentBundle) return currentBundle;
+  const packagedBundle = findNearestAppBundle(process.execPath);
+  if (packagedBundle) return packagedBundle;
+  return firstExistingPath([
+    "/Applications/OpenArgos.app",
+    path.join(rootDir, "dist", "mac-arm64", "OpenArgos.app"),
+    path.join(rootDir, "dist", "mac", "OpenArgos.app")
+  ]);
+}
+
+function permissionHelperConfig(kind = "screenRecording") {
+  if (kind === "accessibility") {
+    return {
+      kind,
+      anchor: "Privacy_Accessibility",
+      eyebrow: "Accessibility",
+      title: "Add OpenArgos to Accessibility",
+      detail: "If OpenArgos is missing from the list, drag the app below into the Accessibility panel."
+    };
+  }
+  return {
+    kind: "screenRecording",
+    anchor: "Privacy_ScreenCapture",
+    eyebrow: "Screen Recording",
+    title: "Add OpenArgos to Screen Recording",
+    detail: "If OpenArgos is missing from the list, drag the app below into the Screen & System Audio Recording panel."
+  };
+}
+
+function currentPermissionHelperState() {
+  const config = permissionHelperConfig(permissionHelperState?.kind);
+  const appBundlePath = getCurrentAppBundlePath();
+  return {
+    ...config,
+    appName: path.basename(appBundlePath || "OpenArgos.app", ".app") || "OpenArgos",
+    appBundlePath,
+    iconPath: firstExistingPath([appIconPath, dockIconPath, path.join(rootDir, "Runner", "Assets", "AppIcon.png")])
+  };
+}
+
+function showPermissionHelper(kind) {
+  permissionHelperState = { kind };
+  const bounds = screen.getPrimaryDisplay().workArea;
+  const width = 360;
+  const height = 236;
+  if (!permissionHelperWindow || permissionHelperWindow.isDestroyed()) {
+    permissionHelperWindow = new BrowserWindow({
+      width,
+      height,
+      x: Math.round(bounds.x + bounds.width - width - 28),
+      y: Math.round(bounds.y + 76),
+      show: false,
+      frame: false,
+      transparent: true,
+      backgroundColor: "#00000000",
+      hasShadow: true,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      skipTaskbar: true,
+      title: "OpenArgos Permission Helper",
+      webPreferences: {
+        preload: path.join(__dirname, "permission-helper", "preload.js"),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false
+      }
+    });
+    permissionHelperWindow.loadFile(path.join(__dirname, "permission-helper", "index.html")).catch(() => {});
+    permissionHelperWindow.on("closed", () => {
+      permissionHelperWindow = null;
+    });
+  } else {
+    permissionHelperWindow.setBounds({
+      x: Math.round(bounds.x + bounds.width - width - 28),
+      y: Math.round(bounds.y + 76),
+      width,
+      height
+    });
+    permissionHelperWindow.webContents.send("permission-helper:state", currentPermissionHelperState());
+  }
+  permissionHelperWindow.once("ready-to-show", () => {
+    if (permissionHelperWindow && !permissionHelperWindow.isDestroyed()) permissionHelperWindow.show();
+  });
+  if (permissionHelperWindow.webContents.isLoading()) return;
+  permissionHelperWindow.show();
+  permissionHelperWindow.webContents.send("permission-helper:state", currentPermissionHelperState());
+}
+
+ipcMain.handle("permission-helper:get-state", () => currentPermissionHelperState());
+
+ipcMain.handle("permission-helper:reveal-app", () => {
+  const appBundlePath = getCurrentAppBundlePath();
+  if (appBundlePath) shell.showItemInFolder(appBundlePath);
+  return { ok: Boolean(appBundlePath), appBundlePath };
+});
+
+ipcMain.handle("permission-helper:open-settings", () => {
+  const config = permissionHelperConfig(permissionHelperState?.kind);
+  openPrivacyPane(config.anchor);
+  return { ok: true };
+});
+
+ipcMain.handle("permission-helper:close", () => {
+  if (permissionHelperWindow && !permissionHelperWindow.isDestroyed()) permissionHelperWindow.close();
+  return { ok: true };
+});
+
+ipcMain.on("permission-helper:start-app-drag", (event) => {
+  const state = currentPermissionHelperState();
+  if (!state.appBundlePath) return;
+  event.sender.startDrag({
+    file: state.appBundlePath,
+    icon: state.iconPath || state.appBundlePath
+  });
+});
+
 function configurePermissionRequests() {
   session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
     const owner = BrowserWindow.fromWebContents(webContents);
@@ -9870,12 +10009,13 @@ ipcMain.handle("settings:screen-recording", async () => {
   const status = getScreenRecordingStatusForSettings();
   const permissions = getMacOSPermissions();
   openPrivacyPane("Privacy_ScreenCapture");
+  showPermissionHelper("screenRecording");
 
   return {
     ok: status === "granted",
     status,
     nativeBridge: Boolean(permissions),
-    appPath: app.getPath("exe"),
+    appPath: getCurrentAppBundlePath(),
     detail: "Opened Screen Recording settings"
   };
 });
@@ -9883,9 +10023,11 @@ ipcMain.handle("settings:screen-recording", async () => {
 ipcMain.handle("settings:accessibility", async () => {
   const status = getAccessibilityStatus();
   openPrivacyPane("Privacy_Accessibility");
+  showPermissionHelper("accessibility");
   return {
     ok: status === "granted",
     status: getAccessibilityStatus(),
+    appPath: getCurrentAppBundlePath(),
     detail: "Opened Accessibility settings"
   };
 });
@@ -10036,11 +10178,12 @@ ipcMain.handle("local:profile:update", async (_event, payload = {}) => {
 ipcMain.handle("local:user-settings:get", async () => {
   const settings = { ...(readStoredSettings().userSettings || {}) };
   settings.memoryCaptureEnabled = settings.memoryCaptureEnabled !== false;
+  settings.muteMusicWhileDictating = settings.muteMusicWhileDictating !== false;
   settings.voiceTranscriptionProvider = normalizeVoiceTranscriptionProvider(settings.voiceTranscriptionProvider);
   settings.computerUseBackend = getComputerUseBackend();
   if (typeof settings.ambientSoundEnabled === "boolean") setAmbientSoundEnabled(settings.ambientSoundEnabled);
   if (settings.ambientSoundType) setAmbientSoundType(settings.ambientSoundType);
-  if (typeof settings.muteMusicWhileDictating === "boolean") setMuteMusicWhileDictating(settings.muteMusicWhileDictating);
+  setMuteMusicWhileDictating(settings.muteMusicWhileDictating);
   if (settings.shortcuts) applyShortcutSettings(settings.shortcuts);
   return { ok: true, settings };
 });

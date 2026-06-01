@@ -1,0 +1,172 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.92);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  background: transparent;
+}
+
+button {
+  font: inherit;
+}
+
+.permission-card {
+  position: relative;
+  width: calc(100% - 18px);
+  height: calc(100% - 18px);
+  margin: 9px;
+  padding: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  background: rgba(24, 24, 24, 0.92);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  -webkit-app-region: drag;
+}
+
+.close-button,
+.app-drag,
+.actions button {
+  -webkit-app-region: no-drag;
+}
+
+.close-button {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 15px;
+  color: rgba(255, 255, 255, 0.58);
+  background: transparent;
+  cursor: pointer;
+}
+
+.close-button:hover {
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.close-button svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.eyebrow {
+  margin: 0 34px 7px 0;
+  color: rgba(255, 255, 255, 0.52);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+h1 {
+  margin: 0 34px 7px 0;
+  font-size: 20px;
+  line-height: 1.15;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+p {
+  margin: 0 0 14px;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.app-drag {
+  width: 100%;
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.07);
+  cursor: grab;
+  text-align: left;
+}
+
+.app-drag:active {
+  cursor: grabbing;
+}
+
+.app-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  object-fit: contain;
+}
+
+.app-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.app-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.app-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 12px;
+}
+
+.drag-handle {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.drag-handle svg {
+  width: 24px;
+  height: 24px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.8;
+  stroke-linecap: round;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.actions button {
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 17px;
+  color: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.09);
+  cursor: pointer;
+}
+
+.actions button:hover {
+  background: rgba(255, 255, 255, 0.14);
+}

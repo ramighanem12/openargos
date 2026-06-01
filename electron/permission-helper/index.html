@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file:; style-src 'self'; script-src 'self';" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenArgos Permission Helper</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="permission-card">
+      <button class="close-button" type="button" aria-label="Close" data-close>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg>
+      </button>
+      <div class="eyebrow" data-eyebrow>Screen Recording</div>
+      <h1 data-title>Add OpenArgos</h1>
+      <p data-detail>Drag OpenArgos into the macOS permission list if it is missing</p>
+
+      <button class="app-drag" type="button" draggable="true" data-drag>
+        <img class="app-icon" alt="" data-app-icon />
+        <span class="app-copy">
+          <span class="app-name" data-app-name>OpenArgos</span>
+          <span class="app-path" data-app-path>OpenArgos.app</span>
+        </span>
+        <span class="drag-handle" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M9 5h.01M15 5h.01M9 12h.01M15 12h.01M9 19h.01M15 19h.01" /></svg>
+        </span>
+      </button>
+
+      <div class="actions">
+        <button type="button" data-open-settings>Open Settings</button>
+        <button type="button" data-reveal>Reveal in Finder</button>
+      </div>
+    </main>
+    <script src="./renderer.js"></script>
+  </body>
+</html>
