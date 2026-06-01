@@ -9361,6 +9361,40 @@ function permissionHelperConfig(kind = "screenRecording") {
   };
 }
 
+function permissionHelperBounds(width = 360, height = 236) {
+  const cursorPoint = screen.getCursorScreenPoint();
+  const workArea = screen.getDisplayNearestPoint(cursorPoint).workArea;
+  return {
+    x: Math.round(workArea.x + (workArea.width - width) / 2),
+    y: Math.round(workArea.y + Math.max(90, (workArea.height - height) * 0.22)),
+    width,
+    height
+  };
+}
+
+function getPermissionHelperIconPath() {
+  return firstExistingPath([
+    dockIconPath,
+    appIconPath,
+    path.join(rootDir, "Runner", "Assets", "DockIcon.png"),
+    path.join(rootDir, "Runner", "Assets", "AppIcon.png")
+  ]);
+}
+
+function getPermissionHelperDragIconPath() {
+  const sourcePath = getPermissionHelperIconPath();
+  if (!sourcePath) return "";
+  try {
+    const targetPath = path.join(app.getPath("userData"), "permission-helper-drag-icon.png");
+    const image = nativeImage.createFromPath(sourcePath);
+    if (image.isEmpty()) return sourcePath;
+    fs.writeFileSync(targetPath, image.resize({ width: 64, height: 64, quality: "best" }).toPNG());
+    return targetPath;
+  } catch {
+    return sourcePath;
+  }
+}
+
 function currentPermissionHelperState() {
   const config = permissionHelperConfig(permissionHelperState?.kind);
   const appBundlePath = getCurrentAppBundlePath();
@@ -9368,21 +9402,22 @@ function currentPermissionHelperState() {
     ...config,
     appName: path.basename(appBundlePath || "OpenArgos.app", ".app") || "OpenArgos",
     appBundlePath,
-    iconPath: firstExistingPath([appIconPath, dockIconPath, path.join(rootDir, "Runner", "Assets", "AppIcon.png")])
+    iconPath: getPermissionHelperIconPath(),
+    dragIconPath: getPermissionHelperDragIconPath()
   };
 }
 
 function showPermissionHelper(kind) {
   permissionHelperState = { kind };
-  const bounds = screen.getPrimaryDisplay().workArea;
   const width = 360;
   const height = 236;
+  const helperBounds = permissionHelperBounds(width, height);
   if (!permissionHelperWindow || permissionHelperWindow.isDestroyed()) {
     permissionHelperWindow = new BrowserWindow({
       width,
       height,
-      x: Math.round(bounds.x + bounds.width - width - 28),
-      y: Math.round(bounds.y + 76),
+      x: helperBounds.x,
+      y: helperBounds.y,
       show: false,
       frame: false,
       transparent: true,
@@ -9405,13 +9440,9 @@ function showPermissionHelper(kind) {
     permissionHelperWindow.on("closed", () => {
       permissionHelperWindow = null;
     });
+    permissionHelperWindow.setAlwaysOnTop(true, "floating");
   } else {
-    permissionHelperWindow.setBounds({
-      x: Math.round(bounds.x + bounds.width - width - 28),
-      y: Math.round(bounds.y + 76),
-      width,
-      height
-    });
+    permissionHelperWindow.setBounds(helperBounds);
     permissionHelperWindow.webContents.send("permission-helper:state", currentPermissionHelperState());
   }
   permissionHelperWindow.once("ready-to-show", () => {
@@ -9446,7 +9477,7 @@ ipcMain.on("permission-helper:start-app-drag", (event) => {
   if (!state.appBundlePath) return;
   event.sender.startDrag({
     file: state.appBundlePath,
-    icon: state.iconPath || state.appBundlePath
+    icon: state.dragIconPath || state.iconPath || state.appBundlePath
   });
 });
 

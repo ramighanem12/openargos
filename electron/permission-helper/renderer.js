@@ -22,7 +22,7 @@ function renderState(state = {}) {
   if (appName) appName.textContent = state.appName || "OpenArgos";
   if (appPath) appPath.textContent = shortAppPath(state.appBundlePath);
   if (appIcon) {
-    appIcon.src = state.iconPath ? `file://${state.iconPath}` : "../renderer/assets/openargos-ambient-icon.png";
+    appIcon.src = state.iconPath ? `file://${encodeURI(state.iconPath)}` : "../renderer/assets/openargos-ambient-icon.png";
   }
   if (dragTarget) dragTarget.disabled = !state.appBundlePath;
 }
