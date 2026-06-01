@@ -19,14 +19,18 @@ button {
 
 .permission-card {
   position: relative;
-  width: calc(100% - 18px);
-  height: calc(100% - 18px);
-  margin: 9px;
+  width: calc(100% - 32px);
+  height: calc(100% - 32px);
+  margin: 16px;
   padding: 18px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 18px;
   background: rgba(24, 24, 24, 0.92);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.18),
+    0 1px 3px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.035);
   -webkit-app-region: drag;
 }
 

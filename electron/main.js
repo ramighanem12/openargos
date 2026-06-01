@@ -9361,7 +9361,7 @@ function permissionHelperConfig(kind = "screenRecording") {
   };
 }
 
-function permissionHelperBounds(width = 360, height = 236) {
+function permissionHelperBounds(width = 440, height = 332) {
   const cursorPoint = screen.getCursorScreenPoint();
   const workArea = screen.getDisplayNearestPoint(cursorPoint).workArea;
   return {
@@ -9409,8 +9409,8 @@ function currentPermissionHelperState() {
 
 function showPermissionHelper(kind) {
   permissionHelperState = { kind };
-  const width = 360;
-  const height = 236;
+  const width = 440;
+  const height = 332;
   const helperBounds = permissionHelperBounds(width, height);
   if (!permissionHelperWindow || permissionHelperWindow.isDestroyed()) {
     permissionHelperWindow = new BrowserWindow({
@@ -9422,7 +9422,7 @@ function showPermissionHelper(kind) {
       frame: false,
       transparent: true,
       backgroundColor: "#00000000",
-      hasShadow: true,
+      hasShadow: false,
       resizable: false,
       minimizable: false,
       maximizable: false,
