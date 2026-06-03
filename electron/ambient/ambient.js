@@ -1115,6 +1115,7 @@ function parseMarkdown(text) {
   const blocks = [];
   let paragraph = [];
   let list = null;
+  let listSeparatedByBlank = false;
 
   function flushParagraph() {
     if (!paragraph.length) return;
@@ -1127,13 +1128,19 @@ function parseMarkdown(text) {
     const line = lines[index].trim();
     if (!line) {
       flushParagraph();
-      list = null;
+      if (list?.items?.length) {
+        listSeparatedByBlank = true;
+      } else {
+        list = null;
+        listSeparatedByBlank = false;
+      }
       continue;
     }
 
     if (isMarkdownTableRow(line) && isMarkdownTableSeparator(lines[index + 1])) {
       flushParagraph();
       list = null;
+      listSeparatedByBlank = false;
       const headerCells = splitMarkdownTableRow(line);
       const separatorCells = splitMarkdownTableRow(lines[index + 1]);
       const rows = [];
@@ -1155,6 +1162,7 @@ function parseMarkdown(text) {
         blocks.push(list);
       }
       list.items.push(bullet[1]);
+      listSeparatedByBlank = false;
       continue;
     }
 
@@ -1166,16 +1174,18 @@ function parseMarkdown(text) {
         blocks.push(list);
       }
       list.items.push(ordered[1]);
+      listSeparatedByBlank = false;
       continue;
     }
 
-    if (list?.items?.length) {
+    if (list?.items?.length && !listSeparatedByBlank) {
       const lastIndex = list.items.length - 1;
       list.items[lastIndex] = `${list.items[lastIndex]}\n${line}`;
       continue;
     }
 
     list = null;
+    listSeparatedByBlank = false;
     paragraph.push(line);
   }
 
