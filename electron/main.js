@@ -1924,18 +1924,58 @@ function modelSupportsComputerUse(model) {
   return Boolean(modelId && modelCatalog[modelId]?.computerUse);
 }
 
+function computerUseCapableModelIds() {
+  return Object.entries(modelCatalog)
+    .filter(([, model]) => model?.computerUse)
+    .map(([modelId]) => modelId);
+}
+
+function computerUseCapableProviders() {
+  return Array.from(new Set(
+    computerUseCapableModelIds()
+      .map((modelId) => modelProviderForModel(modelId))
+      .filter(Boolean)
+  ));
+}
+
+function bestAvailableComputerUseModel(preferredModel = "") {
+  const preferred = normalizeModelId(preferredModel);
+  if (preferred && modelSupportsComputerUse(preferred) && hasProviderCredential(modelProviderForModel(preferred))) {
+    return preferred;
+  }
+  const priority = [
+    defaultComputerUseModelId,
+    ...computerUseCapableModelIds().filter((modelId) => modelId !== defaultComputerUseModelId)
+  ];
+  return priority.find((modelId) => (
+    modelSupportsComputerUse(modelId) &&
+    hasProviderCredential(modelProviderForModel(modelId))
+  )) || "";
+}
+
+function fallbackComputerUseModel(preferredModel = "") {
+  const preferred = normalizeModelId(preferredModel);
+  if (preferred && modelSupportsComputerUse(preferred)) return preferred;
+  return normalizeModelId(defaultComputerUseModelId) || computerUseCapableModelIds()[0] || "";
+}
+
+function hasComputerUseModelCredential() {
+  return computerUseCapableProviders().some((provider) => hasProviderCredential(provider));
+}
+
 function getComputerUseRuntimePolicy() {
   const settings = readStoredSettings();
-  const policy = normalizeLocalModelPolicy(settings.localModelPolicy || {
+  const chatPolicy = normalizeLocalModelPolicy(settings.localModelPolicy || {
     model: settings.userSettings?.primaryModel || settings.primaryModel || ""
   });
-  const modelId = policy.resolvedModel || policy.model || "";
+  const selectedChatModel = chatPolicy.resolvedModel || chatPolicy.model || "";
+  const modelId = bestAvailableComputerUseModel(selectedChatModel) || fallbackComputerUseModel(selectedChatModel);
   const provider = modelProviderForModel(modelId);
   const credential = provider
     ? resolveModelProviderCredential(provider)
     : { apiKey: "", credentialSource: "missing" };
   return {
-    ...policy,
+    ...chatPolicy,
     provider,
     model: modelId,
     resolvedModel: modelId,
@@ -1943,19 +1983,22 @@ function getComputerUseRuntimePolicy() {
     label: modelCatalog[modelId]?.label || modelId || "",
     supportsComputerUse: modelSupportsComputerUse(modelId),
     credential,
-    hasAnyLlmKey: hasLlmProviderCredential()
+    selectedChatModel,
+    hasAnyLlmKey: hasLlmProviderCredential(),
+    hasComputerUseModelCredential: hasComputerUseModelCredential()
   };
 }
 
 function computerUseUnavailableMessage(policy = getComputerUseRuntimePolicy()) {
-  if (!policy.hasAnyLlmKey) {
-    return "Computer Use needs an LLM key and a Computer Use-capable model selected in Settings > Models.";
-  }
-  if (!policy.model) {
-    return "Computer Use needs a model selected in Settings > Models.";
+  if (!policy.hasComputerUseModelCredential) {
+    const providers = computerUseCapableProviders().map((provider) => providerLabelForError(provider));
+    const providerText = providers.length > 1
+      ? `${providers.slice(0, -1).join(", ")} or ${providers[providers.length - 1]}`
+      : providers[0] || "Computer Use-capable provider";
+    return `Computer Use needs a ${providerText} key in Settings > Models.`;
   }
   if (!policy.supportsComputerUse) {
-    return "Computer Use needs a Computer Use-capable model selected in Settings > Models.";
+    return "Computer Use needs a Computer Use-capable model available in Settings > Models.";
   }
   if (!policy.credential?.apiKey) {
     return `Computer Use needs a ${providerLabelForError(policy.provider)} key in Settings > Models.`;

@@ -1517,9 +1517,29 @@ function hasSavedLlmKey() {
   return savedByokProviders().length > 0;
 }
 
-function selectedModelSupportsComputerUse() {
-  const modelId = normalizeModelId(localModelState.model);
-  return Boolean(modelId && modelCatalog[modelId]?.computerUse);
+function computerUseCapableModelIds() {
+  return Object.entries(modelCatalog)
+    .filter(([, model]) => model?.computerUse)
+    .map(([modelId]) => modelId);
+}
+
+function computerUseCapableProviders() {
+  return Array.from(new Set(
+    computerUseCapableModelIds()
+      .map((modelId) => modelCatalog[modelId]?.provider)
+      .filter(Boolean)
+  ));
+}
+
+function hasSavedComputerUseModelKey() {
+  return computerUseCapableProviders().some((provider) => providerHasSavedKey(provider));
+}
+
+function computerUseProviderListLabel() {
+  const labels = computerUseCapableProviders().map((provider) => providerLabel(provider));
+  if (!labels.length) return "Computer Use-capable provider";
+  if (labels.length === 1) return labels[0];
+  return `${labels.slice(0, -1).join(", ")} or ${labels[labels.length - 1]}`;
 }
 
 function computerUseUnavailableReason() {
@@ -1529,30 +1549,10 @@ function computerUseUnavailableReason() {
       body: "Model keys are still loading"
     };
   }
-  if (!hasSavedLlmKey()) {
+  if (!hasSavedComputerUseModelKey()) {
     return {
       title: "Add a key",
-      body: "Add an LLM key in Settings > Models"
-    };
-  }
-  const modelId = normalizeModelId(localModelState.model);
-  if (!modelId) {
-    return {
-      title: "Select a model",
-      body: "Choose a Computer Use-capable model in Settings > Models"
-    };
-  }
-  const model = modelCatalog[modelId] || {};
-  if (!selectedModelSupportsComputerUse()) {
-    return {
-      title: "Select a model",
-      body: "Choose a Computer Use-capable model in Settings > Models"
-    };
-  }
-  if (!providerHasSavedKey(model.provider)) {
-    return {
-      title: "Add a key",
-      body: `Add a ${providerLabel(model.provider)} key in Settings > Models`
+      body: `Add a ${computerUseProviderListLabel()} key in Settings > Models`
     };
   }
   return null;
