@@ -27,8 +27,31 @@ normalize_user_keychains() {
   fi
 }
 
+ensure_local_keychain_in_search_list() {
+  local existing_keychains
+  existing_keychains="$(security list-keychains -d user | tr -d '"' | awk 'NF && !seen[$0]++')"
+  if ! grep -Fxq "$keychain_path" <<<"$existing_keychains"; then
+    # shellcheck disable=SC2086
+    security list-keychains -d user -s "$keychain_path" $existing_keychains
+  else
+    normalize_user_keychains
+  fi
+}
+
+prepare_local_keychain_for_codesign() {
+  [[ -f "$keychain_path" ]] || return 0
+  security unlock-keychain -p "$keychain_password" "$keychain_path"
+  security set-keychain-settings -lut 21600 "$keychain_path"
+  ensure_local_keychain_in_search_list
+  security set-key-partition-list \
+    -S "apple-tool:,apple:,codesign:" \
+    -s \
+    -k "$keychain_password" \
+    "$keychain_path" >/dev/null 2>&1 || true
+}
+
 if [[ -n "$(find_identity_hash)" ]]; then
-  normalize_user_keychains
+  prepare_local_keychain_for_codesign
   exit 0
 fi
 
@@ -40,14 +63,7 @@ fi
 
 security unlock-keychain -p "$keychain_password" "$keychain_path"
 security set-keychain-settings -lut 21600 "$keychain_path"
-
-existing_keychains="$(security list-keychains -d user | tr -d '"' | awk 'NF && !seen[$0]++')"
-if ! grep -Fxq "$keychain_path" <<<"$existing_keychains"; then
-  # shellcheck disable=SC2086
-  security list-keychains -d user -s "$keychain_path" $existing_keychains
-else
-  normalize_user_keychains
-fi
+ensure_local_keychain_in_search_list
 
 if [[ ! -f "$p12_path" ]]; then
   key_path="$cert_dir/openargos-local-development-v2.key"
